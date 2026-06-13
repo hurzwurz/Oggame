@@ -1,12 +1,13 @@
 -- ============================================================================
---  Oggame – Datenbank-Schema (Phase 1: Fundament für Multiplayer)
+--  Oggame – Datenbank-Schema (Phase 1)
 -- ============================================================================
---  Einspielen: Supabase Dashboard → SQL Editor → dieses Skript einfügen → Run.
---  Idempotent gehalten, kann bei Änderungen erneut ausgeführt werden.
+--  Einspielen: Supabase Dashboard → SQL Editor → komplett einfügen → Run.
+--  Idempotent: kann gefahrlos erneut ausgeführt werden.
+--  Hinweis: Das Profil wird vom Spiel selbst beim ersten Login angelegt
+--  (kein Trigger auf auth.users nötig – das vermeidet Rechteprobleme).
 -- ============================================================================
 
 -- ---------------------------------------------------------------- profiles
--- Ein Profil pro eingeloggtem Nutzer (verknüpft mit Supabase Auth).
 create table if not exists public.profiles (
   id          uuid primary key references auth.users on delete cascade,
   username    text unique not null,
@@ -16,8 +17,6 @@ create table if not exists public.profiles (
 
 -- ---------------------------------------------------------------- planets
 -- Geteilte Galaxie: jeder Planet hat eindeutige Koordinaten.
--- Der vollständige Zustand liegt als JSONB vor (für Phase 1 ausreichend,
--- wird in Phase 2/3 bei Bedarf normalisiert).
 create table if not exists public.planets (
   id          uuid primary key default gen_random_uuid(),
   owner       uuid not null references public.profiles(id) on delete cascade,
@@ -38,7 +37,6 @@ create table if not exists public.planets (
 create index if not exists planets_owner_idx on public.planets(owner);
 
 -- ---------------------------------------------------------------- fleets
--- Unterwegs befindliche Flotten. Werden in Phase 3 serverseitig aufgelöst.
 create table if not exists public.fleets (
   id            uuid primary key default gen_random_uuid(),
   owner         uuid not null references public.profiles(id) on delete cascade,
@@ -57,7 +55,6 @@ create table if not exists public.fleets (
   created_at    timestamptz not null default now()
 );
 create index if not exists fleets_owner_idx on public.fleets(owner);
-create index if not exists fleets_arrive_idx on public.fleets(arrive_at) where not processed;
 
 -- ---------------------------------------------------------------- reports
 create table if not exists public.reports (
@@ -77,8 +74,6 @@ alter table public.planets  enable row level security;
 alter table public.fleets   enable row level security;
 alter table public.reports  enable row level security;
 
--- profiles: jeder eingeloggte Nutzer darf Profile lesen (Namen in der Galaxie),
--- aber nur sein eigenes anlegen/ändern.
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
   for select to authenticated using (true);
@@ -89,17 +84,14 @@ drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
   for update to authenticated using (auth.uid() = id);
 
--- planets: NUR der Besitzer darf seine Planeten im Detail lesen/schreiben.
--- Fremde Planeten sieht man nur über die eingeschränkte View unten
--- (bzw. später über Spionage per Edge Function).
 drop policy if exists planets_owner_all on public.planets;
 create policy planets_owner_all on public.planets
   for all to authenticated using (auth.uid() = owner) with check (auth.uid() = owner);
 
--- fleets / reports: nur eigene.
 drop policy if exists fleets_owner_all on public.fleets;
 create policy fleets_owner_all on public.fleets
   for all to authenticated using (auth.uid() = owner) with check (auth.uid() = owner);
+
 drop policy if exists reports_owner_all on public.reports;
 create policy reports_owner_all on public.reports
   for all to authenticated using (auth.uid() = owner) with check (auth.uid() = owner);
@@ -107,10 +99,8 @@ create policy reports_owner_all on public.reports
 -- ============================================================================
 --  Öffentliche Galaxie-Ansicht (nur unkritische Felder)
 -- ============================================================================
--- Zeigt allen Spielern Koordinaten + Planetenname + Besitzername,
+-- Zeigt allen Spielern Koordinaten + Planetenname + Besitzername + Punkte,
 -- aber KEINE Flotten/Verteidigung (dafür gibt es später Spionage).
--- Reguläre Views laufen mit Besitzerrechten und umgehen damit die RLS der
--- Basistabelle – wir geben hier also bewusst nur einen sicheren Ausschnitt frei.
 create or replace view public.galaxy_overview as
   select p.galaxy, p.system, p.position, p.name,
          pr.username as owner_name, pr.points
@@ -118,27 +108,3 @@ create or replace view public.galaxy_overview as
   join public.profiles pr on pr.id = p.owner;
 
 grant select on public.galaxy_overview to authenticated, anon;
-
--- ============================================================================
---  Auto-Anlage des Profils beim Registrieren
--- ============================================================================
--- Legt für jeden neuen Auth-Nutzer automatisch ein Profil an.
--- Der Username kommt aus den Sign-up-Metadaten (data.username) oder fällt
--- auf den E-Mail-Präfix zurück.
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.profiles (id, username)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1))
-  )
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();

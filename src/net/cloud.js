@@ -11,6 +11,36 @@ const STARTING = { metal: 500, crystal: 500, deuterium: 100 };
 const EMPTY_QUEUES = { building: null, research: null, shipyard: [] };
 const secondaryKey = (uid) => `oggame.secondary.${uid}`;
 
+/**
+ * Stellt sicher, dass ein Profil existiert (ersetzt den DB-Trigger).
+ * Wählt bei Namenskollision automatisch einen freien Namen.
+ */
+export async function ensureProfile(user) {
+  const { data: existing, error: selErr } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (existing) return;
+
+  const base = ((user.user_metadata && user.user_metadata.username) ||
+    (user.email ? user.email.split('@')[0] : 'Spieler')).slice(0, 20) || 'Spieler';
+
+  for (let i = 0; i < 6; i++) {
+    const username = i === 0 ? base : `${base}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const { error } = await supabase.from('profiles').insert({ id: user.id, username });
+    if (!error) return;
+    if (error.code === '23505') {
+      // id bereits vorhanden -> fertig; sonst Name vergeben -> neuen versuchen
+      if (/\(id\)|profiles_pkey/i.test(error.message || '')) return;
+      continue;
+    }
+    throw error;
+  }
+  throw new Error('Profil konnte nicht angelegt werden.');
+}
+
 /** Lädt den Heimatplaneten oder legt einen neuen an freien Koordinaten an. */
 export async function ensureHomePlanet(userId) {
   const { data: existing, error: loadErr } = await supabase

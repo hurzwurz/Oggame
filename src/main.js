@@ -5,7 +5,7 @@ import { clearGame } from './engine/storage.js';
 import { simulateBattle } from './engine/combat.js';
 import * as V from './ui/render.js';
 import { isConfigured, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview } from './net/supabase.js';
-import { ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
+import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
 
 // ------------------------------------------------------------- globaler Zustand
 let game = null;
@@ -62,6 +62,7 @@ async function boot() {
 
 async function startOnline(user) {
   app.innerHTML = `<div class="login-wrap"><div class="panel login-card"><h2>🚀 Oggame</h2><p class="muted">Lade dein Imperium…</p></div></div>`;
+  await ensureProfile(user);
   const row = await ensureHomePlanet(user.id);
   cloudSaver = makeCloudSaver(row.id, user.id);
   game = new Game({ initialState: buildInitialState(row, user.id), onSave: cloudSaver.onSave });

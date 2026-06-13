@@ -35,3 +35,16 @@ export async function spyPlayer(coords) {
   if (error) throw error;
   return data;
 }
+
+/** Lädt die letzten Server-Berichte des Nutzers (z. B. erlittene Angriffe/Spionage). */
+export async function loadReports() {
+  const sb = await getClient();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from('reports')
+    .select('id, type, payload, created_at')
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  return data || [];
+}

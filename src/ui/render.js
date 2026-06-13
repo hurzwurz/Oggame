@@ -316,7 +316,7 @@ function countList(map, sep = ', ') {
   return entries.map(([id, n]) => `${unitName(id)} ×${fmt(n)}`).join(sep);
 }
 
-const MISSION_LABELS = { attack: 'Angriff', espionage: 'Spionage', expedition: 'Expedition' };
+const MISSION_LABELS = { attack: 'Angriff', espionage: 'Spionage', expedition: 'Expedition', pvp_attack: '⚔️ PvP-Angriff', pvp_spy: '🛰️ Spionage (Spieler)' };
 
 // ----------------------------------------------------------------- Galaxie
 
@@ -499,6 +499,9 @@ function reportCard(r) {
     const loot = (r.loot && (r.loot.metal || r.loot.crystal || r.loot.deuterium))
       ? `Beute: ${costLine(r.loot)}` : 'Keine Beute';
     return card(`⚔️ Angriff auf Spieler ${coordFmt(r.target)}`, t, `${v}<br>${loot}`);
+  }
+  if (r.type === 'spied') {
+    return card('🛰️ Spionage entdeckt', t, `Du wurdest von ${coordFmt(r.from || [0, 0, 0])} ausspioniert.`);
   }
   if (r.type === 'pvp_defense') {
     const v = r.winner === 'defender' ? '<b class="win">Verteidigt!</b>' : r.winner === 'attacker' ? '<b class="lose">Geplündert!</b>' : '<b>Unentschieden</b>';

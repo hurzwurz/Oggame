@@ -410,6 +410,50 @@ export class Game {
     return { ok: true };
   }
 
+  /**
+   * Schickt eine PvP-Flotte (Angriff/Spionage) mit Flugzeit zu einem echten
+   * Spieler. Die Auflösung passiert serverseitig bei Ankunft (siehe main.js).
+   * @param kind 'attack' | 'spy'
+   */
+  sendPvpFleet(kind, coords, ships) {
+    ships = Object.fromEntries(Object.entries(ships).filter(([, n]) => n > 0));
+    if (Object.keys(ships).length === 0) return { ok: false, error: 'Keine Schiffe ausgewählt' };
+    for (const [id, n] of Object.entries(ships)) {
+      if ((this.state.ships[id] || 0) < n) return { ok: false, error: `Nicht genug ${this.nameOf(id)}` };
+    }
+    if (G.fleetSpeed(ships, this.state.research) <= 0)
+      return { ok: false, error: 'Diese Flotte kann nicht fliegen' };
+    if (kind === 'spy' && !ships.espionageProbe)
+      return { ok: false, error: 'Spionage benötigt Spionagesonden' };
+
+    const dist = G.distance(this.state.coords, coords);
+    const ft = G.flightTime(dist, ships, this.state.research);
+    const fuel = G.fuelCost(dist, ships);
+    if (this.state.resources.deuterium < fuel) return { ok: false, error: 'Nicht genug Deuterium (Treibstoff)' };
+
+    for (const [id, n] of Object.entries(ships)) this.state.ships[id] -= n;
+    this.state.resources.deuterium -= fuel;
+
+    const now = Date.now();
+    this.state.fleets.push({
+      id: this.state.fleetSeq++,
+      mission: kind === 'spy' ? 'pvp_spy' : 'pvp_attack',
+      target: coords,
+      targetName: 'Spieler ' + coords.join(':'),
+      ships,
+      cargo: { metal: 0, crystal: 0, deuterium: 0 },
+      fuel,
+      pvp: true,
+      resolving: false,
+      phase: 'outbound',
+      departAt: now,
+      arriveAt: now + ft * 1000,
+      returnAt: now + ft * 2 * 1000,
+    });
+    this.save();
+    return { ok: true };
+  }
+
   /** Bringt eine Flotte vorzeitig zurück (Rückruf). */
   recallFleet(fleetId) {
     const fleet = this.state.fleets.find((f) => f.id === fleetId);
@@ -426,6 +470,7 @@ export class Game {
   _processFleets(now) {
     const remaining = [];
     for (const fleet of this.state.fleets) {
+      if (fleet.pvp) { remaining.push(fleet); continue; } // PvP-Flotten löst main.js auf
       if (fleet.phase === 'outbound' && now >= fleet.arriveAt) {
         this._resolveMission(fleet);
         if (fleet.lost) continue; // Flotte vernichtet -> entfällt

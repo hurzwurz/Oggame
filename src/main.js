@@ -126,6 +126,7 @@ async function startOnline(user) {
       game.state.xp = Math.max(game.state.xp || 0, pr.points || 0); // Server-Punkte (z. B. Admin) übernehmen
     }
   } catch { /* Name optional */ }
+  await mergeServerReports();
   startGameUI();
   // Bei Logout/Token-Verlust zurück zum Login.
   onAuthChange((u) => { if (!u) location.reload(); });
@@ -235,35 +236,81 @@ async function doAdminGrant() {
   }
 }
 
-async function doPvpAttack(coords, ships) {
-  if (!Object.keys(ships).length) return toast('Keine Schiffe ausgewählt.', false);
-  for (const [id, n] of Object.entries(ships)) {
-    if ((game.state.ships[id] || 0) < n) return toast(`Nicht genug ${game.nameOf(id)}.`, false);
-  }
-  toast('Angriff läuft …', true);
+// Lädt erlittene Angriffe/Spionage (Server-Berichte) und mischt sie in die Liste.
+async function mergeServerReports() {
+  if (!userInfo || !game) return;
   try {
-    const res = await Pvp.attackPlayer(coords, ships);
-    // Lokalen Zustand mit dem Server-Ergebnis abgleichen
-    if (res.attacker_ships) game.state.ships = res.attacker_ships;
-    if (res.attacker_resources) {
-      const r = res.attacker_resources;
-      game.state.resources.metal = Number(r.metal) || 0;
-      game.state.resources.crystal = Number(r.crystal) || 0;
-      game.state.resources.deuterium = Number(r.deuterium) || 0;
-    }
-    game.state.reports.unshift({
-      id: game.state.fleetSeq++, time: Date.now(), type: 'pvp_attack',
-      target: coords, winner: res.winner, loot: res.loot || {},
-    });
-    game.save();
-    try { game.coins = await Coins.getCoins(); } catch { /* Coins-Anzeige optional */ }
-    const msg = res.winner === 'attacker' ? 'Sieg! Beute eingefahren.' : res.winner === 'defender' ? 'Niederlage – Flotte dezimiert.' : 'Unentschieden.';
-    toast(`PvP: ${msg}`, res.winner === 'attacker');
-    activeTab = 'reports';
-    renderTabs();
-    renderView();
+    const rows = await Pvp.loadReports();
+    const srv = rows
+      .filter((r) => r.type === 'pvp_defense' || r.type === 'spied')
+      .map((rw) => ({ id: 'srv:' + rw.id, time: Date.parse(rw.created_at) || Date.now(), type: rw.type, ...(rw.payload || {}) }));
+    const local = game.state.reports.filter((r) => !(typeof r.id === 'string' && r.id.startsWith('srv:')));
+    game.state.reports = [...srv, ...local].sort((a, b) => b.time - a.time).slice(0, 50);
   } catch (e) {
-    toast(friendlyError(e), false);
+    console.warn('Server-Berichte:', e.message || e);
+  }
+}
+
+// Verarbeitet fliegende PvP-Flotten: Auflösung bei Ankunft (Server), Rückkehr.
+let pvpBusy = false;
+async function processPvpFleets() {
+  if (!userInfo || !game || pvpBusy) return;
+  const now = Date.now();
+  // 1) Eine fällige Auflösung pro Durchlauf (vermeidet parallele Server-Aufrufe)
+  const due = game.state.fleets.find((f) => f.pvp && f.phase === 'outbound' && now >= f.arriveAt && !f.resolving);
+  if (due) {
+    due.resolving = true;
+    pvpBusy = true;
+    try {
+      if (due.mission === 'pvp_spy') {
+        const d = await Pvp.spyPlayer(due.target);
+        game.state.reports.unshift({
+          id: game.state.fleetSeq++, time: Date.now(), type: 'espionage',
+          target: due.target, targetName: d.name, resources: d.resources, fleet: d.ships, defense: d.defenses,
+        });
+        toast('Spionagebericht erhalten.', true);
+      } else {
+        const res = await Pvp.resolvePvpAttack(due.target, due.ships);
+        due.ships = res.survivors || {};
+        const loot = res.loot || {};
+        due.cargo.metal += loot.metal || 0; due.cargo.crystal += loot.crystal || 0; due.cargo.deuterium += loot.deuterium || 0;
+        game.state.reports.unshift({
+          id: game.state.fleetSeq++, time: Date.now(), type: 'pvp_attack',
+          target: due.target, winner: res.winner, loot,
+        });
+        if (Object.values(due.ships).every((n) => n <= 0)) due.lost = true;
+        try { game.coins = await Coins.getCoins(); } catch { /* optional */ }
+        toast(`PvP: ${res.winner === 'attacker' ? 'Sieg!' : res.winner === 'defender' ? 'Niederlage' : 'Unentschieden'}`, res.winner === 'attacker');
+      }
+      due.phase = 'returning';
+    } catch (e) {
+      toast(friendlyError(e), false);
+      due.phase = 'returning'; // bei Fehler Flotte heimkehren lassen
+    } finally {
+      due.resolving = false; pvpBusy = false;
+      game.save();
+      if (activeTab === 'movement' || activeTab === 'reports') renderView();
+    }
+  }
+  // 2) Rückkehr abgeschlossener PvP-Flotten
+  let changed = false;
+  for (const f of game.state.fleets) {
+    if (f.pvp && f.phase === 'returning' && now >= f.returnAt && !f._done) {
+      f._done = true; changed = true;
+      if (!f.lost) {
+        for (const [id, n] of Object.entries(f.ships)) if (n > 0) game.state.ships[id] = (game.state.ships[id] || 0) + n;
+        const cap = game.capacities();
+        const r = game.state.resources;
+        r.metal = Math.min(cap.metal, r.metal + (f.cargo.metal || 0));
+        r.crystal = Math.min(cap.crystal, r.crystal + (f.cargo.crystal || 0));
+        r.deuterium = Math.min(cap.deuterium, r.deuterium + (f.cargo.deuterium || 0));
+        game.state.reports.unshift({ id: game.state.fleetSeq++, time: Date.now(), type: 'return', targetName: f.targetName, mission: f.mission, cargo: f.cargo });
+      }
+    }
+  }
+  if (changed) {
+    game.state.fleets = game.state.fleets.filter((f) => !f._done);
+    game.save();
   }
 }
 
@@ -610,6 +657,7 @@ async function onTabClick(ev) {
   if (activeTab === 'alliance') await refreshAlliance();
   if (activeTab === 'friends') await refreshFriends();
   if (activeTab === 'admin') await refreshAdmin();
+  if (activeTab === 'reports' && userInfo) { await mergeServerReports(); renderView(); }
 }
 
 function onViewClick(ev) {
@@ -679,10 +727,16 @@ function onViewClick(ev) {
       if (n > 0) ships[el.dataset.id] = n;
     });
     const cargo = { metal: num('#c-metal', 0), crystal: num('#c-crystal', 0), deuterium: num('#c-deut', 0) };
-    // Ist das Ziel ein echter Spieler? -> server-seitiger PvP-Angriff
-    const isPlayer = userInfo && mission === 'attack' &&
+    // Ist das Ziel ein echter Spieler? -> PvP-Flotte mit Flugzeit
+    const isPlayer = userInfo &&
       players.some((p) => !p.is_self && p.galaxy === coords[0] && p.system === coords[1] && p.position === coords[2]);
-    if (isPlayer) { doPvpAttack(coords, ships); return; }
+    if (isPlayer && (mission === 'attack' || mission === 'espionage')) {
+      const res = game.sendPvpFleet(mission === 'attack' ? 'attack' : 'spy', coords, ships);
+      if (res.ok) { toast(mission === 'attack' ? 'Angriffsflotte gestartet.' : 'Spionageflotte gestartet.', true); activeTab = 'movement'; renderTabs(); }
+      else toast(res.error || 'Start nicht möglich.', false);
+      renderView();
+      return;
+    }
     const res = game.sendFleet(mission, coords, ships, cargo);
     if (res.ok) { toast('Flotte gestartet.', true); activeTab = 'movement'; renderTabs(); }
     else toast(res.error || 'Start nicht möglich.', false);
@@ -741,6 +795,7 @@ function onViewInput(ev) {
 
 function loop() {
   game.tick();
+  if (userInfo) processPvpFleets(); // PvP-Flotten serverseitig auflösen
   topbarEl.innerHTML = V.renderTopbar(game);
   if (LIVE_TABS.has(activeTab)) viewEl.innerHTML = TABS[activeTab].render(game);
 }

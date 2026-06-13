@@ -22,6 +22,7 @@ const sim = {
 
 const TABS = {
   overview: { label: 'Übersicht', render: (g) => V.renderOverview(g) },
+  base: { label: 'Basis', render: (g) => V.renderBase(g) },
   buildings: { label: 'Gebäude', render: (g) => V.renderBuildings(g) },
   research: { label: 'Forschung', render: (g) => V.renderResearch(g) },
   shipyard: { label: 'Werft', render: (g) => V.renderShipyard(g) },
@@ -32,7 +33,7 @@ const TABS = {
   reports: { label: 'Berichte', render: (g) => V.renderReports(g) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
 };
-const LIVE_TABS = new Set(['overview', 'movement', 'reports']);
+const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports']);
 let activeTab = 'overview';
 
 const app = document.getElementById('app');

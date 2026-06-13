@@ -83,6 +83,15 @@ Dann im Browser öffnen: <http://localhost:8080>
 Einfach einen Eintrag in `src/data/ships.js` ergänzen – Kosten, Kampfwerte und
 Voraussetzungen. Die Oberfläche und der Bau funktionieren dann automatisch.
 
+## Grafiken / Bilder
+
+Jedes Objekt hat ein Icon (Emoji) als Platzhalter. Echte Bilder lassen sich
+ohne Code-Änderung ergänzen: Datei nach `assets/<kategorie>/<id>.png` legen –
+sie wird automatisch angezeigt. Vorgaben (Format, Namen, gewünschte Optik) in
+[`docs/ART_BRIEF.md`](docs/ART_BRIEF.md), Ablage-Infos in
+[`assets/README.md`](assets/README.md). Der Tab **Basis** zeigt deinen Planeten
+mit allen Anlagen/Fabriken als Kachelübersicht.
+
 ## Spielablauf in Kürze
 
 1. **Gebäude** ausbauen (Minen + Solarkraftwerk), bis Ressourcen fließen.

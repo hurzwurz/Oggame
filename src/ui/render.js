@@ -8,6 +8,12 @@ import * as F from '../engine/formulas.js';
 import * as G from '../data/galaxy.js';
 import { getIcon } from '../data/icons.js';
 
+// Bild mit Emoji-Fallback. Sobald eine Datei assets/<folder>/<id>.png existiert,
+// wird sie angezeigt; fehlt sie, bleibt das Emoji sichtbar.
+export function thumbHtml(folder, id, emoji) {
+  return `<span class="thumb"><img class="thumb-img" src="assets/${folder}/${id}.png" alt="" loading="lazy" onload="this.closest('.thumb').classList.add('hasimg')" onerror="this.remove()"><span class="thumb-emoji">${emoji}</span></span>`;
+}
+
 // ------------------------------------------------------------------ Formatierung
 
 export function fmt(n) {
@@ -146,7 +152,7 @@ function levelCard(def, level, game, kind) {
   return `
     <div class="card ${disabled ? 'locked' : ''}">
       <div class="card-head">
-        <h4><span class="card-icon">${getIcon(def.id, kind)}</span> ${def.name}</h4>
+        <h4>${thumbHtml(kind === 'research' ? 'research' : 'buildings', def.id, getIcon(def.id, kind))} ${def.name}</h4>
         <span class="level">Stufe ${level}</span>
       </div>
       <p class="desc">${def.desc}</p>
@@ -190,7 +196,7 @@ function unitCard(def, owned, game, kind) {
   return `
     <div class="card ${disabled ? 'locked' : ''}">
       <div class="card-head">
-        <h4><span class="card-icon">${getIcon(def.id, def.class || kind)}</span> ${def.name}</h4>
+        <h4>${thumbHtml(kind === 'defense' ? 'defenses' : 'ships', def.id, getIcon(def.id, def.class || kind))} ${def.name}</h4>
         <span class="level">Anzahl: ${fmt(owned)}</span>
       </div>
       <p class="desc">${def.desc}</p>
@@ -561,4 +567,54 @@ function simResult(r) {
     </div>
     <p class="muted">Trümmerfeld: ${costLine({ metal: r.debris.metal, crystal: r.debris.crystal })}</p>
   </div>`;
+}
+
+// ------------------------------------------------------------------ Basis-Übersicht
+
+export function renderBase(game) {
+  const s = game.state;
+  const built = BUILDINGS.filter((b) => (s.buildings[b.id] || 0) > 0);
+  const buildingNow = s.queues.building ? s.queues.building.id : null;
+
+  const shipCount = Object.values(s.ships).reduce((a, b) => a + b, 0);
+  const defCount = Object.values(s.defenses).reduce((a, b) => a + b, 0);
+  const fleetsOut = (s.fleets || []).length;
+
+  const planetThumb = thumbHtml('world', 'planet', '🪐');
+
+  let tiles;
+  if (built.length === 0) {
+    tiles = `<p class="muted">Noch keine Gebäude errichtet. Beginne im Tab <b>Gebäude</b> mit der Metallmine und einem Solarkraftwerk.</p>`;
+  } else {
+    tiles = `<div class="base-grid">` + built
+      .map((b) => {
+        const lvl = s.buildings[b.id];
+        const now = b.id === buildingNow ? ' building-now' : '';
+        return `<div class="base-tile${now}">
+          ${thumbHtml('buildings', b.id, getIcon(b.id, 'building'))}
+          <div class="bt-name">${b.name}</div>
+          <div class="bt-level">Stufe ${lvl}${now ? ' · baut…' : ''}</div>
+        </div>`;
+      })
+      .join('') + `</div>`;
+  }
+
+  return `
+    <div class="panel base-head">
+      ${planetThumb}
+      <div>
+        <h2 style="margin:0">${s.planetName}</h2>
+        <div class="muted">${coordFmt(s.coords)}</div>
+        <div class="base-stats">
+          <span>🏗️ ${built.length} Gebäude</span>
+          <span>🚀 ${fmt(shipCount)} Schiffe</span>
+          <span>🛡️ ${fmt(defCount)} Verteidigung</span>
+          <span>📡 ${fleetsOut} Flotten unterwegs</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Anlagen & Fabriken</h3>
+      ${tiles}
+    </div>`;
 }

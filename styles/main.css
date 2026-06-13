@@ -106,6 +106,26 @@ body {
 .card-head { display: flex; justify-content: space-between; align-items: baseline; }
 .card-head h4 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
 .card-icon { font-size: 22px; line-height: 1; }
+
+/* Bild-Thumbnail mit Emoji-Fallback */
+.thumb { position: relative; display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; vertical-align: middle; flex-shrink: 0; }
+.thumb-img { display: none; width: 100%; height: 100%; object-fit: contain; }
+.thumb.hasimg .thumb-img { display: block; }
+.thumb.hasimg .thumb-emoji { display: none; }
+.thumb-emoji { font-size: 21px; line-height: 1; }
+
+/* Basis-Übersicht */
+.base-head { display: flex; align-items: center; gap: 16px; }
+.base-head .thumb { width: 64px; height: 64px; }
+.base-head .thumb-emoji { font-size: 52px; }
+.base-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 13px; color: var(--text); }
+.base-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.base-tile { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
+.base-tile .thumb { width: 56px; height: 56px; display: block; margin: 0 auto 6px; }
+.base-tile .thumb-emoji { font-size: 44px; }
+.base-tile .bt-name { font-size: 12.5px; }
+.base-tile .bt-level { font-size: 11px; color: var(--muted); }
+.base-tile.building-now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .level { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .desc { font-size: 12.5px; color: var(--muted); margin: 6px 0; flex-grow: 1; }
 .unit-stats { font-size: 12px; margin: 4px 0; color: var(--text); }

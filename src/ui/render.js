@@ -374,7 +374,7 @@ export function renderLogin(state) {
   const isSignup = mode === 'signup';
   return `<div class="login-wrap">
     <div class="panel login-card">
-      <h2>🚀 Oggame</h2>
+      <h2>🚀 NEXARION</h2>
       <p class="muted">${isSignup ? 'Neues Imperium gründen' : 'Willkommen zurück, Kommandant.'}</p>
       ${error ? `<div class="login-error">${error}</div>` : ''}
       ${info ? `<div class="login-info">${info}</div>` : ''}

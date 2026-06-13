@@ -49,6 +49,15 @@ let activeTab = 'overview';
 const app = document.getElementById('app');
 let topbarEl, tabsEl, viewEl;
 
+// PWA: Installations-Aufforderung abfangen
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('install-btn');
+  if (btn) btn.hidden = false;
+});
+
 // =================================================================== Bootstrap
 
 async function boot() {
@@ -80,7 +89,7 @@ function startOffline(notice) {
 }
 
 async function startOnline(user) {
-  app.innerHTML = `<div class="login-wrap"><div class="panel login-card"><h2>🚀 Oggame</h2><p class="muted">Lade dein Imperium…</p></div></div>`;
+  app.innerHTML = `<div class="login-wrap"><div class="panel login-card"><h2>🚀 NEXARION</h2><p class="muted">Lade dein Imperium…</p></div></div>`;
   await ensureProfile(user);
   // Gesperrte Accounts blockieren
   try {
@@ -387,7 +396,8 @@ function startGameUI() {
   app.innerHTML = `
     <div id="brand">
       <img src="assets/world/planet.png" class="logo" alt="" onerror="this.style.display='none'" />
-      <span>OGGAME <small>Weltraum-Strategie</small></span>
+      <span>NEXARION <small>Stellar Dominion</small></span>
+      <button id="install-btn" class="ghost" hidden>⬇️ Installieren</button>
     </div>
     <header id="topbar"></header>
     <nav id="tabs"></nav>
@@ -406,6 +416,18 @@ function startGameUI() {
   tabsEl.addEventListener('click', onTabClick);
   viewEl.addEventListener('click', onViewClick);
   viewEl.addEventListener('input', onViewInput);
+
+  const installBtn = document.getElementById('install-btn');
+  if (installBtn) {
+    if (deferredPrompt) installBtn.hidden = false;
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      try { await deferredPrompt.userChoice; } catch { /* egal */ }
+      deferredPrompt = null;
+      installBtn.hidden = true;
+    });
+  }
 
   const logoutBtn = document.getElementById('logout-btn');
   if (logoutBtn) logoutBtn.addEventListener('click', async () => {

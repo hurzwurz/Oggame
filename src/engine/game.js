@@ -24,9 +24,12 @@ function defaultState() {
     defenses: {},
     queues: {
       building: null, // { id, finishAt }
+      building2: null, // zweiter Gebäude-Slot (nur mit Booster)
       research: null, // { id, finishAt }
       shipyard: [], // [ { id, kind, remaining, perUnitSeconds, nextAt } ]
     },
+    booster: { until: 0 }, // { until } – aktiv solange until > now
+    xp: 0, // Erfahrungspunkte (jeder Bau bringt XP)
     galaxy: G.generateGalaxy(),
     fleets: [], // unterwegs befindliche Missionen
     reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
@@ -60,7 +63,31 @@ export class Game {
       fleets: saved.fleets || [],
       reports: saved.reports || [],
       fleetSeq: saved.fleetSeq || 1,
+      xp: saved.xp || 0,
     };
+  }
+
+  // -------------------------------------------------------------------- Level/XP
+  _awardXp(n) { this.state.xp = (this.state.xp || 0) + Math.max(0, Math.floor(n)); }
+  /** Aktuelles Level (wächst mit der Wurzel der XP). */
+  level() { return Math.floor(Math.sqrt((this.state.xp || 0) / 100)) + 1; }
+  /** Fortschritt zum nächsten Level: { level, into, need, xp }. */
+  xpInfo() {
+    const xp = this.state.xp || 0;
+    const lvl = this.level();
+    const base = 100 * Math.pow(lvl - 1, 2); // XP-Schwelle aktuelles Level
+    const next = 100 * Math.pow(lvl, 2);     // XP-Schwelle nächstes Level
+    return { level: lvl, xp, into: Math.floor(xp - base), need: Math.floor(next - base) };
+  }
+  _buildXp(def, newLevel) {
+    if (!def) return 5;
+    const c = F.levelCost(def, newLevel - 1);
+    return Math.max(5, Math.floor(((c.metal || 0) + (c.crystal || 0) + (c.deuterium || 0)) / 100));
+  }
+  _unitXp(def) {
+    if (!def) return 1;
+    const c = def.cost || {};
+    return Math.max(1, Math.floor(((c.metal || 0) + (c.crystal || 0) + (c.deuterium || 0)) / 300));
   }
 
   save() {
@@ -143,12 +170,19 @@ export class Game {
     const q = this.state.queues;
 
     if (q.building && now >= q.building.finishAt) {
-      this.state.buildings[q.building.id] = (this.state.buildings[q.building.id] || 0) + 1;
+      const lvl = (this.state.buildings[q.building.id] = (this.state.buildings[q.building.id] || 0) + 1);
+      this._awardXp(this._buildXp(BUILDING_MAP[q.building.id], lvl));
       q.building = null;
+    }
+    if (q.building2 && now >= q.building2.finishAt) {
+      const lvl = (this.state.buildings[q.building2.id] = (this.state.buildings[q.building2.id] || 0) + 1);
+      this._awardXp(this._buildXp(BUILDING_MAP[q.building2.id], lvl));
+      q.building2 = null;
     }
 
     if (q.research && now >= q.research.finishAt) {
-      this.state.research[q.research.id] = (this.state.research[q.research.id] || 0) + 1;
+      const lvl = (this.state.research[q.research.id] = (this.state.research[q.research.id] || 0) + 1);
+      this._awardXp(this._buildXp(RESEARCH_MAP[q.research.id], lvl));
       q.research = null;
     }
 
@@ -159,6 +193,7 @@ export class Game {
       // Stück fertigstellen
       const target = job.kind === 'ship' ? this.state.ships : this.state.defenses;
       target[job.id] = (target[job.id] || 0) + 1;
+      this._awardXp(this._unitXp(job.kind === 'ship' ? SHIP_MAP[job.id] : DEFENSE_MAP[job.id]));
       job.remaining -= 1;
       if (job.remaining <= 0) {
         q.shipyard.shift();
@@ -179,18 +214,38 @@ export class Game {
     this.state.resources.deuterium -= cost.deuterium || 0;
   }
 
+  // ------------------------------------------------------------------ Booster
+  boosterActive(now = Date.now()) {
+    return !!(this.state.booster && this.state.booster.until > now);
+  }
+  boosterRemaining(now = Date.now()) {
+    return this.boosterActive(now) ? Math.ceil((this.state.booster.until - now) / 1000) : 0;
+  }
+  /** Aktiviert den Booster für `hours` Stunden (stapelt, wenn schon aktiv). */
+  activateBooster(hours = 1) {
+    const now = Date.now();
+    const base = this.boosterActive(now) ? this.state.booster.until : now;
+    this.state.booster = { until: base + hours * 3600 * 1000 };
+    this.save();
+  }
+
   /** Versucht, ein Gebäude in Auftrag zu geben. Gibt {ok, error} zurück. */
   buildBuilding(id) {
     const def = BUILDING_MAP[id];
     if (!def) return { ok: false, error: 'Unbekanntes Gebäude' };
-    if (this.state.queues.building) return { ok: false, error: 'Bauschleife belegt' };
     if (!F.requirementsMet(def, this.state)) return { ok: false, error: 'Voraussetzungen fehlen' };
+    // Freien Bauslot finden – zweiter Slot nur mit aktivem Booster.
+    let slot = null;
+    if (!this.state.queues.building) slot = 'building';
+    else if (this.boosterActive() && !this.state.queues.building2) slot = 'building2';
+    else return { ok: false, error: 'Bauschleife belegt' };
     const level = this.state.buildings[id] || 0;
     const cost = F.levelCost(def, level);
     if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
     this._spend(cost);
-    const seconds = F.buildTimeSeconds(cost, this.state.buildings);
-    this.state.queues.building = { id, finishAt: Date.now() + seconds * 1000 };
+    let seconds = F.buildTimeSeconds(cost, this.state.buildings);
+    if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
+    this.state.queues[slot] = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
     return { ok: true };
   }
@@ -207,7 +262,8 @@ export class Game {
     const cost = F.levelCost(def, level);
     if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
     this._spend(cost);
-    const seconds = F.researchTimeSeconds(cost, this.state.buildings);
+    let seconds = F.researchTimeSeconds(cost, this.state.buildings);
+    if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
     this.state.queues.research = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
     return { ok: true };

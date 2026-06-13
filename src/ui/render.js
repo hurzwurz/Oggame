@@ -8,6 +8,8 @@ import * as F from '../engine/formulas.js';
 import * as G from '../data/galaxy.js';
 import { getIcon } from '../data/icons.js';
 
+export const BOOSTER_COST = 100; // Coins für 1 Std Booster
+
 // Bild mit Emoji-Fallback. Sobald eine Datei assets/<folder>/<id>.png existiert,
 // wird sie angezeigt; fehlt sie, bleibt das Emoji sichtbar.
 export function thumbHtml(folder, id, emoji) {
@@ -65,7 +67,14 @@ export function renderTopbar(game) {
       <span class="res-rate">${perH >= 0 ? '+' : ''}${fmt(perH)}/h</span>
     </div>`;
   };
+  const lv = game.xpInfo ? game.xpInfo() : { level: 1, into: 0, need: 100 };
+  const lvCell = `<div class="res c-xp">
+      <span class="res-label">⭐ Level</span>
+      <span class="res-val">${lv.level}</span>
+      <span class="res-rate">XP ${fmt(lv.into)}/${fmt(lv.need)}</span>
+    </div>`;
   return (
+    lvCell +
     cell(getIcon('metal'), 'Metall', r.metal, cap.metal, prod.metal, 'c-metal') +
     cell(getIcon('crystal'), 'Kristall', r.crystal, cap.crystal, prod.crystal, 'c-crystal') +
     cell(getIcon('deuterium'), 'Deuterium', r.deuterium, cap.deuterium, prod.deuterium, 'c-deut') +
@@ -114,9 +123,20 @@ export function renderOverview(game) {
     });
   }
 
+  const boostActive = game.boosterActive && game.boosterActive();
+  const b2row = (boostActive || q.building2)
+    ? `<tr><td>Gebäude 2</td><td>${q.building2 ? game.nameOf(q.building2.id) : '–'}</td><td>${q.building2 ? fmtTime((q.building2.finishAt - now) / 1000) : '–'}</td><td></td></tr>`
+    : '';
+  const boosterBar = online
+    ? `<div class="booster-bar">${boostActive
+        ? `⚡ <b>Booster aktiv</b> – noch ${fmtTime(game.boosterRemaining())} · 2× Tempo + 2. Bauslot`
+        : `<button id="booster-btn" class="build-btn">⚡ Booster aktivieren (1 Std · ${BOOSTER_COST} 🪙)</button> <span class="muted small">2 Gebäude gleichzeitig + doppeltes Bautempo</span>`}</div>`
+    : '';
+
   return `
     <div class="panel">
       <h2>${game.state.planetName}</h2>
+      ${boosterBar}
       <div class="grid2">
         <div>
           <h3>Produktion / Stunde</h3>
@@ -138,6 +158,7 @@ export function renderOverview(game) {
             <thead><tr><th>Bereich</th><th>Auftrag</th><th>Restzeit</th><th></th></tr></thead>
             <tbody>
               ${queueRow('Gebäude', q.building, 'building')}
+              ${b2row}
               ${queueRow('Forschung', q.research, 'research')}
               ${shipyardRows}
             </tbody>
@@ -158,16 +179,20 @@ function levelCard(def, level, game, kind) {
       ? F.buildTimeSeconds(cost, game.state.buildings)
       : F.researchTimeSeconds(cost, game.state.buildings);
   const disabled = !met || !afford;
-  const busy = kind === 'building' ? !!game.state.queues.building : !!game.state.queues.research;
+  const busy = kind === 'building'
+    ? !!game.state.queues.building && !(game.boosterActive && game.boosterActive() && !game.state.queues.building2)
+    : !!game.state.queues.research;
+  const ready = met && afford && !busy; // jetzt baubar
+  const effTime = game.boosterActive && game.boosterActive() ? Math.ceil(time / 2) : time;
   return `
-    <div class="card ${disabled ? 'locked' : ''}">
+    <div class="card ${disabled ? 'locked' : ''} ${ready ? 'ready' : ''}">
       <div class="card-head">
         <h4>${thumbHtml(kind === 'research' ? 'research' : 'buildings', def.id, getIcon(def.id, kind))} ${def.name}</h4>
-        <span class="level">Stufe ${level}</span>
+        <span class="level">${ready ? '<span class="ready-tag">● baubar</span> ' : ''}Stufe ${level}</span>
       </div>
       <p class="desc">${def.desc}</p>
       <div class="cost">${costLine(cost)}</div>
-      <div class="meta">⏱ ${fmtTime(time)}</div>
+      <div class="meta">⏱ ${fmtTime(effTime)}${effTime !== time ? ' <span class="c-coin">(Booster)</span>' : ''}</div>
       ${reqLine(def, game)}
       <button class="build-btn" data-kind="${kind}" data-id="${def.id}" ${disabled || busy ? 'disabled' : ''}>
         ${busy ? 'Beschäftigt' : level === 0 ? 'Bauen' : 'Ausbauen'}
@@ -175,8 +200,17 @@ function levelCard(def, level, game, kind) {
     </div>`;
 }
 
+function buildableCount(defs, levels, game, kind) {
+  return defs.filter((d) => {
+    if (!F.requirementsMet(d, game.state)) return false;
+    return F.canAfford(game.resources, F.levelCost(d, levels[d.id] || 0));
+  }).length;
+}
+
 export function renderBuildings(game) {
-  return `<div class="cards">${BUILDINGS.map((b) =>
+  const n = buildableCount(BUILDINGS, game.state.buildings, game, 'building');
+  return `<div class="buildable-note">🟢 <b>${n}</b> Gebäude jetzt baubar</div>
+    <div class="cards">${BUILDINGS.map((b) =>
     levelCard(b, game.state.buildings[b.id] || 0, game, 'building')
   ).join('')}</div>`;
 }
@@ -185,7 +219,9 @@ export function renderResearch(game) {
   if ((game.state.buildings.researchLab || 0) < 1) {
     return `<div class="panel"><p>Baue zuerst ein <b>Forschungslabor</b>, um Technologien zu erforschen.</p></div>`;
   }
-  return `<div class="cards">${RESEARCH.map((r) =>
+  const n = buildableCount(RESEARCH, game.state.research, game, 'research');
+  return `<div class="buildable-note">🟢 <b>${n}</b> Technologien jetzt erforschbar</div>
+    <div class="cards">${RESEARCH.map((r) =>
     levelCard(r, game.state.research[r.id] || 0, game, 'research')
   ).join('')}</div>`;
 }
@@ -730,18 +766,22 @@ export function renderAdmin(state) {
 
   const players = state.players || [];
   const rows = players.length
-    ? players.map((p) => `<tr class="${p.banned ? 'banned-row' : ''}">
-        <td>${p.username}${p.banned ? ' <span class="lose">🚫</span>' : ''}</td>
-        <td>${fmt(p.points || 0)}</td>
-        <td>🪙 ${fmt(p.coins || 0)}</td>
-        <td>
-          <button class="admin-gift" data-user="${p.username}">+100 🪙</button>
-          ${p.banned
-            ? `<button class="admin-unban" data-user="${p.username}">Freigeben</button>`
-            : `<button class="admin-ban ghost" data-user="${p.username}">Bannen</button>`}
-        </td>
-      </tr>`).join('')
-    : `<tr><td colspan="4" class="muted">${state.loading ? 'Lädt…' : 'Keine Spieler.'}</td></tr>`;
+    ? players.map((p) => {
+        const name = p.username || '<span class="muted">(nie gespielt)</span>';
+        const actions = p.username
+          ? `<button class="admin-gift" data-user="${p.username}">+100 🪙</button>
+             ${p.banned
+               ? `<button class="admin-unban" data-user="${p.username}">Freigeben</button>`
+               : `<button class="admin-ban ghost" data-user="${p.username}">Bannen</button>`}`
+          : '<span class="muted">–</span>';
+        return `<tr class="${p.banned ? 'banned-row' : ''}">
+          <td>${name}${p.banned ? ' <span class="lose">🚫</span>' : ''}<br><span class="muted small">${p.email || ''}</span></td>
+          <td>${fmt(p.points || 0)}</td>
+          <td>🪙 ${fmt(p.coins || 0)}</td>
+          <td>${actions}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="4" class="muted">${state.loading ? 'Lädt…' : (state.error || 'Keine Spieler.')}</td></tr>`;
 
   return `
     <div class="panel">

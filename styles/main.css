@@ -390,3 +390,71 @@ button.build-btn:hover:not(:disabled) { box-shadow: 0 0 20px rgba(34,211,238,.65
 .card:not(.locked):hover { border-color: var(--neon); box-shadow: 0 10px 24px rgba(34,211,238,.22); }
 .login-card h2 { text-shadow: 0 0 18px rgba(34,211,238,.5); letter-spacing: 2px; }
 .win { text-shadow: 0 0 8px rgba(61,220,132,.4); }
+
+/* ===== Baubar-Hervorhebung & Booster ===== */
+.card.ready { border-color: rgba(61,220,132,.55); box-shadow: 0 0 14px rgba(61,220,132,.18); }
+.card.ready:hover { box-shadow: 0 8px 22px rgba(61,220,132,.28); }
+.ready-tag { color: #3ddc84; font-weight: 700; font-size: 10.5px; text-shadow: 0 0 8px rgba(61,220,132,.4); margin-right: 4px; }
+.buildable-note {
+  margin: 0 0 12px; padding: 8px 12px; font-size: 13px;
+  background: rgba(61,220,132,.08); border: 1px solid rgba(61,220,132,.3); border-radius: 8px;
+}
+.booster-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 8px 0 14px; padding: 10px 14px; border-radius: 10px;
+  background: linear-gradient(90deg, rgba(255,207,90,.12), rgba(255,61,240,.10));
+  border: 1px solid rgba(255,207,90,.35);
+}
+.booster-bar .build-btn { margin: 0; }
+
+/* ============================================================ Eckiges Grau/Neonblau-Schema (final) */
+:root {
+  --bg: #0d0f13;          /* dunkelgrau / fast schwarz */
+  --bg2: #14171d;
+  --panel: #191d25;       /* dunkelgrau */
+  --panel2: #222833;
+  --border: #2c333f;      /* grau */
+  --text: #d6dce5;        /* hellgrau */
+  --muted: #8893a3;
+  --accent: #18a0ff;      /* neonblau */
+  --neon: #18a0ff;
+  --neon2: #18a0ff;
+  --babyblue: #8ecae6;
+  --metal: #b9c4d6;       /* grau */
+  --crystal: #8ecae6;     /* babyblau */
+  --deut: #5ee6a8;
+  --energy: #ffd84e;
+}
+/* Alle Boxen eckig */
+#topbar, .res, .tab, .panel, .card, .base-tile, .thumb, #toast, button, input, select,
+.login-card, .skip, .booster-bar, .buildable-note, .login-error, .login-info, .report-card {
+  border-radius: 0 !important;
+}
+/* Hintergrund: dunkelgrau mit dezentem Neonblau-Schimmer + Sterne/Gitter in Blau */
+body {
+  background:
+    radial-gradient(1200px 600px at 50% -220px, rgba(24,160,255,.16), transparent 70%),
+    radial-gradient(900px 520px at 90% 10%, rgba(142,202,230,.07), transparent 70%),
+    #0d0f13;
+}
+body::after { background-image:
+  linear-gradient(rgba(24,160,255,.5) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(24,160,255,.5) 1px, transparent 1px); }
+.c-xp { color: var(--neon); }
+.c-crystal { color: var(--babyblue); }
+
+/* Brand & Akzente auf Grau/Babyblau/Neonblau */
+#brand span { background: linear-gradient(90deg, #b9c4d6, #8ecae6 45%, #18a0ff);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 16px rgba(24,160,255,.4); }
+#brand .logo { filter: drop-shadow(0 0 10px rgba(24,160,255,.6)); }
+.group { color: var(--neon); text-shadow: 0 0 10px rgba(24,160,255,.3); }
+.tab.active { background: linear-gradient(180deg, #18a0ff, #0d7fd6); color: #03121f;
+  box-shadow: 0 0 16px rgba(24,160,255,.55); border-color: #18a0ff; }
+button.build-btn { background: linear-gradient(180deg, #2aa8ff, #0d7fd6); color: #03121f;
+  box-shadow: 0 0 12px rgba(24,160,255,.4); }
+.panel { border-color: rgba(24,160,255,.16); background: linear-gradient(180deg, #1b212b, #14181f); }
+#topbar { border-color: rgba(24,160,255,.22); }
+.card:not(.locked):hover { border-color: var(--neon); box-shadow: 0 8px 22px rgba(24,160,255,.22); }
+.booster-bar { background: linear-gradient(90deg, rgba(24,160,255,.12), rgba(142,202,230,.10));
+  border-color: rgba(24,160,255,.35); }

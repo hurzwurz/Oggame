@@ -33,7 +33,7 @@ begin
 end $$;
 grant execute on function public.admin_set_banned(text, boolean) to authenticated;
 
--- Admin: vollständige Spielerliste (Name, Punkte, Coins, Bann-Status).
+-- Admin: ALLE registrierten Accounts (auch nie eingeloggte), inkl. E-Mail.
 create or replace function public.admin_list_players()
 returns jsonb language plpgsql security definer set search_path = public as $$
 begin
@@ -42,11 +42,16 @@ begin
   end if;
   return coalesce((
     select jsonb_agg(jsonb_build_object(
-      'username', p.username, 'points', p.points,
-      'banned', p.is_banned, 'coins', coalesce(w.coins, 0)
-    ) order by p.username)
-    from public.profiles p
-    left join public.wallets w on w.user_id = p.id
+      'username', p.username,
+      'email', u.email,
+      'points', coalesce(p.points, 0),
+      'banned', coalesce(p.is_banned, false),
+      'coins', coalesce(w.coins, 0),
+      'played', (p.id is not null)
+    ) order by u.created_at desc)
+    from auth.users u
+    left join public.profiles p on p.id = u.id
+    left join public.wallets w on w.user_id = u.id
   ), '[]'::jsonb);
 end $$;
 grant execute on function public.admin_list_players() to authenticated;

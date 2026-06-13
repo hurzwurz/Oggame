@@ -148,6 +148,17 @@ async function refreshFriends() {
   if (activeTab === 'friends') renderView();
 }
 
+async function doBooster() {
+  try {
+    game.coins = await Coins.spendCoins(V.BOOSTER_COST);
+    game.activateBooster(1);
+    toast('Booster aktiviert: 2× Tempo + 2. Bauslot für 1 Std!', true);
+    renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
 async function doSkip(cost, kind) {
   try {
     game.coins = await Coins.spendCoins(cost);
@@ -529,6 +540,7 @@ function onViewClick(ev) {
     return;
   }
 
+  if (btn.id === 'booster-btn') { doBooster(); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.id === 'admin-refresh' || btn.classList.contains('admin-gift') ||

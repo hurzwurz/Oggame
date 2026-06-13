@@ -134,3 +134,69 @@ drop policy if exists kopfjagd_scores_insert on public.kopfjagd_scores;
 create policy kopfjagd_scores_insert on public.kopfjagd_scores
   for insert to anon, authenticated
   with check (char_length(name) between 1 and 24 and score >= 0 and score <= 100000);
+
+-- ============================================================================
+--  Soziale Features: Allianzen/Gilden & Freundschaften
+-- ============================================================================
+
+-- ---------------------------------------------------------------- alliances
+create table if not exists public.alliances (
+  id         uuid primary key default gen_random_uuid(),
+  name       text unique not null check (char_length(name) between 2 and 40),
+  tag        text unique not null check (char_length(tag) between 1 and 6),
+  founder    uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.alliance_members (
+  alliance_id uuid not null references public.alliances(id) on delete cascade,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  role        text not null default 'member',
+  joined_at   timestamptz not null default now(),
+  primary key (alliance_id, user_id)
+);
+-- jeder Spieler nur in EINER Allianz
+create unique index if not exists alliance_members_user_uniq on public.alliance_members(user_id);
+
+alter table public.alliances        enable row level security;
+alter table public.alliance_members enable row level security;
+
+drop policy if exists alliances_select on public.alliances;
+create policy alliances_select on public.alliances for select to authenticated using (true);
+drop policy if exists alliances_insert on public.alliances;
+create policy alliances_insert on public.alliances for insert to authenticated with check (auth.uid() = founder);
+drop policy if exists alliances_delete on public.alliances;
+create policy alliances_delete on public.alliances for delete to authenticated using (auth.uid() = founder);
+
+drop policy if exists members_select on public.alliance_members;
+create policy members_select on public.alliance_members for select to authenticated using (true);
+drop policy if exists members_insert on public.alliance_members;
+create policy members_insert on public.alliance_members for insert to authenticated with check (auth.uid() = user_id);
+drop policy if exists members_delete on public.alliance_members;
+create policy members_delete on public.alliance_members for delete to authenticated using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------- friendships
+create table if not exists public.friendships (
+  id         uuid primary key default gen_random_uuid(),
+  requester  uuid not null references public.profiles(id) on delete cascade,
+  addressee  uuid not null references public.profiles(id) on delete cascade,
+  status     text not null default 'pending',  -- pending | accepted
+  created_at timestamptz not null default now(),
+  unique (requester, addressee)
+);
+create index if not exists friendships_addressee_idx on public.friendships(addressee);
+
+alter table public.friendships enable row level security;
+
+drop policy if exists friendships_select on public.friendships;
+create policy friendships_select on public.friendships
+  for select to authenticated using (auth.uid() = requester or auth.uid() = addressee);
+drop policy if exists friendships_insert on public.friendships;
+create policy friendships_insert on public.friendships
+  for insert to authenticated with check (auth.uid() = requester);
+drop policy if exists friendships_update on public.friendships;
+create policy friendships_update on public.friendships
+  for update to authenticated using (auth.uid() = addressee);
+drop policy if exists friendships_delete on public.friendships;
+create policy friendships_delete on public.friendships
+  for delete to authenticated using (auth.uid() = requester or auth.uid() = addressee);

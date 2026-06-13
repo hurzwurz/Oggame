@@ -6,12 +6,15 @@ import { simulateBattle } from './engine/combat.js';
 import * as V from './ui/render.js';
 import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview, resetPassword, updatePassword, onPasswordRecovery } from './net/supabase.js';
 import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
+import * as Social from './net/social.js';
 
 // ------------------------------------------------------------- globaler Zustand
 let game = null;
 let userInfo = null; // { email, planetId } im Online-Modus, sonst null
 let cloudSaver = null;
 let players = []; // andere Spieler aus der Galaxie
+let allianceData = { online: false };
+let friendData = { online: false };
 
 const dispatch = { g: 1, s: 1, p: 1, mission: 'attack' };
 const sim = {
@@ -31,6 +34,8 @@ const TABS = {
   galaxy: { label: 'Galaxie', render: (g) => V.renderGalaxy(g, dispatch, players) },
   movement: { label: 'Flotten', render: (g) => V.renderMovements(g) },
   reports: { label: 'Berichte', render: (g) => V.renderReports(g) },
+  alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
+  friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
 };
 const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports']);
@@ -75,7 +80,7 @@ async function startOnline(user) {
   const row = await ensureHomePlanet(user.id);
   cloudSaver = makeCloudSaver(row.id, user.id);
   game = new Game({ initialState: buildInitialState(row, user.id), onSave: cloudSaver.onSave });
-  userInfo = { email: user.email, planetId: row.id };
+  userInfo = { id: user.id, email: user.email, planetId: row.id };
   dispatch.g = row.galaxy; dispatch.s = row.system; dispatch.p = row.position;
   await refreshPlayers();
   startGameUI();
@@ -92,6 +97,74 @@ async function refreshPlayers() {
     }));
   } catch (e) {
     console.warn('Spielerliste konnte nicht geladen werden:', e.message || e);
+  }
+}
+
+async function refreshAlliance() {
+  if (!userInfo) { allianceData = { online: false }; if (activeTab === 'alliance') renderView(); return; }
+  allianceData = { online: true, loading: true };
+  if (activeTab === 'alliance') renderView();
+  try {
+    const membership = await Social.myMembership(userInfo.id);
+    const members = membership ? await Social.allianceMembers(membership.alliance_id) : [];
+    const alliances = membership ? [] : await Social.listAlliances();
+    allianceData = { online: true, membership, members, alliances };
+  } catch (e) {
+    allianceData = { online: true, error: friendlyError(e) };
+  }
+  if (activeTab === 'alliance') renderView();
+}
+
+async function refreshFriends() {
+  if (!userInfo) { friendData = { online: false }; if (activeTab === 'friends') renderView(); return; }
+  friendData = { online: true, loading: true };
+  if (activeTab === 'friends') renderView();
+  try {
+    friendData = { online: true, friends: await Social.listFriends(userInfo.id) };
+  } catch (e) {
+    friendData = { online: true, error: friendlyError(e) };
+  }
+  if (activeTab === 'friends') renderView();
+}
+
+async function doSocial(btn) {
+  try {
+    if (btn.id === 'create-alliance') {
+      const tag = (viewEl.querySelector('#al-tag').value || '').trim();
+      const name = (viewEl.querySelector('#al-name').value || '').trim();
+      if (tag.length < 1 || name.length < 2) return toast('Bitte Tag (1–6) und Name (2–40) angeben.', false);
+      await Social.createAlliance(userInfo.id, name, tag);
+      toast('Allianz gegründet!', true);
+      await refreshAlliance();
+    } else if (btn.classList.contains('join-alliance')) {
+      await Social.joinAlliance(userInfo.id, btn.dataset.id);
+      toast('Allianz beigetreten.', true);
+      await refreshAlliance();
+    } else if (btn.id === 'leave-alliance') {
+      await Social.leaveAlliance(userInfo.id, btn.dataset.id);
+      toast('Allianz verlassen.', true);
+      await refreshAlliance();
+    } else if (btn.id === 'add-friend') {
+      const name = (viewEl.querySelector('#fr-name').value || '').trim();
+      if (!name) return toast('Bitte Spielername angeben.', false);
+      await Social.sendFriendRequest(userInfo.id, name);
+      toast('Freundschaftsanfrage gesendet.', true);
+      await refreshFriends();
+    } else if (btn.classList.contains('friend-accept')) {
+      await Social.respondFriend(btn.dataset.id, true);
+      toast('Anfrage angenommen.', true);
+      await refreshFriends();
+    } else if (btn.classList.contains('friend-decline')) {
+      await Social.respondFriend(btn.dataset.id, false);
+      toast('Anfrage abgelehnt.', true);
+      await refreshFriends();
+    } else if (btn.classList.contains('friend-remove')) {
+      await Social.removeFriend(btn.dataset.id);
+      toast('Freund entfernt.', true);
+      await refreshFriends();
+    }
+  } catch (e) {
+    toast(friendlyError(e), false);
   }
 }
 
@@ -307,11 +380,23 @@ async function onTabClick(ev) {
     await refreshPlayers();
     if (activeTab === 'galaxy') renderView();
   }
+  if (activeTab === 'alliance') await refreshAlliance();
+  if (activeTab === 'friends') await refreshFriends();
 }
 
 function onViewClick(ev) {
   const btn = ev.target.closest('button');
   if (!btn) return;
+
+  // Soziale Aktionen (Allianz/Freunde)
+  if (
+    btn.id === 'create-alliance' || btn.id === 'leave-alliance' || btn.id === 'add-friend' ||
+    btn.classList.contains('join-alliance') || btn.classList.contains('friend-accept') ||
+    btn.classList.contains('friend-decline') || btn.classList.contains('friend-remove')
+  ) {
+    doSocial(btn);
+    return;
+  }
 
   if (btn.classList.contains('build-btn') && btn.dataset.kind) {
     const { kind, id } = btn.dataset;

@@ -618,3 +618,83 @@ export function renderBase(game) {
       ${tiles}
     </div>`;
 }
+
+// ------------------------------------------------------------------ Allianz
+
+export function renderAlliance(state) {
+  if (!state.online) return `<div class="panel"><p class="muted">Allianzen gibt es nur im Online-Modus (eingeloggt).</p></div>`;
+  if (state.error) return `<div class="panel"><div class="login-error">${state.error}</div></div>`;
+  if (state.loading) return `<div class="panel"><p class="muted">Lädt…</p></div>`;
+
+  if (state.membership) {
+    const a = state.membership.alliances || {};
+    const rows = (state.members || [])
+      .map((m) => {
+        const p = m.profiles || {};
+        return `<tr><td>${p.username || '?'}</td><td>${m.role === 'founder' ? '👑 Gründer' : 'Mitglied'}</td><td>${fmt(p.points || 0)}</td></tr>`;
+      })
+      .join('');
+    return `<div class="panel">
+      <h2>[${a.tag}] ${a.name}</h2>
+      <p class="muted">${(state.members || []).length} Mitglied(er)</p>
+      <table class="queue"><thead><tr><th>Spieler</th><th>Rolle</th><th>Punkte</th></tr></thead><tbody>${rows}</tbody></table>
+      <button id="leave-alliance" class="ghost" data-id="${state.membership.alliance_id}" style="margin-top:12px">Allianz verlassen</button>
+    </div>`;
+  }
+
+  const list = (state.alliances || []).length
+    ? `<table class="queue"><thead><tr><th>Tag</th><th>Name</th><th></th></tr></thead><tbody>${state.alliances
+        .map((a) => `<tr><td>[${a.tag}]</td><td>${a.name}</td><td><button class="join-alliance build-btn" data-id="${a.id}">Beitreten</button></td></tr>`)
+        .join('')}</tbody></table>`
+    : `<p class="muted">Noch keine Allianzen – gründe die erste!</p>`;
+
+  return `
+    <div class="panel">
+      <h3>Allianz gründen</h3>
+      <div class="dispatch-row">
+        <label>Tag (1–6)<input id="al-tag" maxlength="6" placeholder="ABC" /></label>
+        <label>Name (2–40)<input id="al-name" maxlength="40" placeholder="Galaktische Föderation" /></label>
+        <button id="create-alliance" class="build-btn" style="align-self:end">Gründen</button>
+      </div>
+    </div>
+    <div class="panel"><h3>Allianzen beitreten</h3>${list}</div>`;
+}
+
+// ------------------------------------------------------------------ Freunde
+
+export function renderFriends(state) {
+  if (!state.online) return `<div class="panel"><p class="muted">Freunde gibt es nur im Online-Modus (eingeloggt).</p></div>`;
+  if (state.error) return `<div class="panel"><div class="login-error">${state.error}</div></div>`;
+  if (state.loading) return `<div class="panel"><p class="muted">Lädt…</p></div>`;
+
+  const f = state.friends || [];
+  const accepted = f.filter((x) => x.status === 'accepted');
+  const incoming = f.filter((x) => x.status === 'pending' && x.incoming);
+  const outgoing = f.filter((x) => x.status === 'pending' && x.outgoing);
+
+  const accRows = accepted.length
+    ? accepted.map((x) => `<tr><td>🤝 ${x.otherName}</td><td><button class="friend-remove ghost" data-id="${x.id}">Entfernen</button></td></tr>`).join('')
+    : `<tr><td class="muted" colspan="2">Noch keine Freunde.</td></tr>`;
+
+  const inRows = incoming.length
+    ? incoming.map((x) => `<tr><td>${x.otherName} möchte dein Freund sein</td><td>
+        <button class="friend-accept build-btn" data-id="${x.id}">Annehmen</button>
+        <button class="friend-decline ghost" data-id="${x.id}">Ablehnen</button></td></tr>`).join('')
+    : '';
+
+  const outRows = outgoing.length
+    ? outgoing.map((x) => `<tr><td>${x.otherName}</td><td class="muted">Anfrage gesendet…</td></tr>`).join('')
+    : '';
+
+  return `
+    <div class="panel">
+      <h3>Freund hinzufügen</h3>
+      <div class="dispatch-row">
+        <label>Spielername<input id="fr-name" placeholder="Spielername" /></label>
+        <button id="add-friend" class="build-btn" style="align-self:end">Anfrage senden</button>
+      </div>
+    </div>
+    ${incoming.length ? `<div class="panel"><h3>Offene Anfragen</h3><table class="queue"><tbody>${inRows}</tbody></table></div>` : ''}
+    <div class="panel"><h3>Freunde</h3><table class="queue"><tbody>${accRows}</tbody></table></div>
+    ${outgoing.length ? `<div class="panel"><h3>Gesendet</h3><table class="queue"><tbody>${outRows}</tbody></table></div>` : ''}`;
+}

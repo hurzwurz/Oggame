@@ -25,7 +25,11 @@ export async function signUp(email, password, username) {
   return supabase.auth.signUp({
     email,
     password,
-    options: { data: { username } },
+    options: {
+      data: { username },
+      // Bestätigungs-Link führt zurück ins Spiel (statt auf localhost).
+      emailRedirectTo: typeof location !== 'undefined' ? location.origin + location.pathname : undefined,
+    },
   });
 }
 

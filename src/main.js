@@ -118,7 +118,14 @@ async function startOnline(user) {
   await refreshPlayers();
   try { game.coins = await Coins.getCoins(); } catch (e) { console.warn('Coins:', e.message || e); }
   try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
-  try { const pr = await Social.getProfile(user.id); if (pr) { userInfo.username = pr.username; userInfo.points = pr.points || 0; } } catch { /* Name optional */ }
+  try {
+    const pr = await Social.getProfile(user.id);
+    if (pr) {
+      userInfo.username = pr.username;
+      userInfo.points = pr.points || 0;
+      game.state.xp = Math.max(game.state.xp || 0, pr.points || 0); // Server-Punkte (z. B. Admin) übernehmen
+    }
+  } catch { /* Name optional */ }
   startGameUI();
   // Bei Logout/Token-Verlust zurück zum Login.
   onAuthChange((u) => { if (!u) location.reload(); });
@@ -272,12 +279,37 @@ async function refreshAdmin() {
   if (activeTab === 'admin') renderView();
 }
 
+function askNum(msg, def) {
+  if (typeof prompt !== 'function') return null;
+  const v = prompt(msg, String(def));
+  if (v === null) return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function doAdmin(btn) {
+  const user = btn.dataset.user;
   try {
     if (btn.id === 'admin-refresh') return refreshAdmin();
     if (btn.classList.contains('admin-gift')) {
-      const bal = await Coins.adminGrant(btn.dataset.user, 100);
-      toast(`${btn.dataset.user}: ${bal} Coins.`, true);
+      const n = askNum(`Wie viele Coins für ${user}? (negativ = abziehen)`, 100);
+      if (n === null) return;
+      const bal = await Coins.adminGrant(user, n);
+      toast(`${user}: ${bal} Coins.`, true);
+      return refreshAdmin();
+    }
+    if (btn.classList.contains('admin-xp')) {
+      const n = askNum(`XP/Punkte für ${user} setzen auf:`, 0);
+      if (n === null) return;
+      await Coins.adminSetPoints(user, n);
+      toast(`${user}: XP gesetzt auf ${n}.`, true);
+      return refreshAdmin();
+    }
+    if (btn.classList.contains('admin-level')) {
+      const n = askNum(`Level für ${user} setzen auf:`, 1);
+      if (n === null) return;
+      await Coins.adminSetLevel(user, n);
+      toast(`${user}: Level ${n} gesetzt.`, true);
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-ban')) {
@@ -592,6 +624,7 @@ function onViewClick(ev) {
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.id === 'admin-refresh' || btn.classList.contains('admin-gift') ||
+      btn.classList.contains('admin-xp') || btn.classList.contains('admin-level') ||
       btn.classList.contains('admin-ban') || btn.classList.contains('admin-unban')) {
     doAdmin(btn); return;
   }

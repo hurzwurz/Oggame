@@ -458,3 +458,7 @@ button.build-btn { background: linear-gradient(180deg, #2aa8ff, #0d7fd6); color:
 .card:not(.locked):hover { border-color: var(--neon); box-shadow: 0 8px 22px rgba(24,160,255,.22); }
 .booster-bar { background: linear-gradient(90deg, rgba(24,160,255,.12), rgba(142,202,230,.10));
   border-color: rgba(24,160,255,.35); }
+
+/* Admin-Aktionen nebeneinander mit Abstand (kein Verdrücken) */
+.admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-actions button { padding: 7px 11px; font-size: 12px; white-space: nowrap; }

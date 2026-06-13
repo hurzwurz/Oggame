@@ -55,3 +55,27 @@ begin
   ), '[]'::jsonb);
 end $$;
 grant execute on function public.admin_list_players() to authenticated;
+
+-- Admin: Punkte/XP setzen (Level ergibt sich daraus: level = floor(sqrt(points/100))+1).
+create or replace function public.admin_set_points(target_username text, pts bigint)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
+    raise exception 'Keine Admin-Rechte';
+  end if;
+  update public.profiles set points = greatest(0, pts) where username = target_username;
+end $$;
+grant execute on function public.admin_set_points(text, bigint) to authenticated;
+
+-- Admin: Level direkt setzen (setzt die passende Punktzahl-Schwelle).
+create or replace function public.admin_set_level(target_username text, lvl int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
+    raise exception 'Keine Admin-Rechte';
+  end if;
+  update public.profiles
+    set points = (100 * power(greatest(1, lvl) - 1, 2))::bigint
+    where username = target_username;
+end $$;
+grant execute on function public.admin_set_level(text, int) to authenticated;

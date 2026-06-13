@@ -769,14 +769,19 @@ export function renderAdmin(state) {
     ? players.map((p) => {
         const name = p.username || '<span class="muted">(nie gespielt)</span>';
         const actions = p.username
-          ? `<button class="admin-gift" data-user="${p.username}">+100 🪙</button>
-             ${p.banned
-               ? `<button class="admin-unban" data-user="${p.username}">Freigeben</button>`
-               : `<button class="admin-ban ghost" data-user="${p.username}">Bannen</button>`}`
+          ? `<div class="admin-actions">
+              <button class="admin-gift" data-user="${p.username}">🪙 Coins</button>
+              <button class="admin-xp" data-user="${p.username}">⭐ XP</button>
+              <button class="admin-level" data-user="${p.username}">🎚 Level</button>
+              ${p.banned
+                ? `<button class="admin-unban" data-user="${p.username}">✅ Frei</button>`
+                : `<button class="admin-ban ghost" data-user="${p.username}">🚫 Bann</button>`}
+            </div>`
           : '<span class="muted">–</span>';
+        const lvl = Math.floor(Math.sqrt((p.points || 0) / 100)) + 1;
         return `<tr class="${p.banned ? 'banned-row' : ''}">
           <td>${name}${p.banned ? ' <span class="lose">🚫</span>' : ''}<br><span class="muted small">${p.email || ''}</span></td>
-          <td>${fmt(p.points || 0)}</td>
+          <td>${fmt(p.points || 0)}<br><span class="muted small">⭐ Lvl ${lvl}</span></td>
           <td>🪙 ${fmt(p.coins || 0)}</td>
           <td>${actions}</td>
         </tr>`;

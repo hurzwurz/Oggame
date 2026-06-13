@@ -63,3 +63,19 @@ export async function adminSetBanned(username, banned) {
   const { error } = await sb.rpc('admin_set_banned', { target_username: username, banned });
   if (error) throw error;
 }
+
+/** Admin: Punkte/XP eines Spielers setzen. */
+export async function adminSetPoints(username, points) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { error } = await sb.rpc('admin_set_points', { target_username: username, pts: points });
+  if (error) throw error;
+}
+
+/** Admin: Level eines Spielers setzen. */
+export async function adminSetLevel(username, level) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { error } = await sb.rpc('admin_set_level', { target_username: username, lvl: level });
+  if (error) throw error;
+}

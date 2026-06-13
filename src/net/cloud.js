@@ -152,6 +152,8 @@ export function makeCloudSaver(planetId, userId) {
         })
         .eq('id', planetId);
       if (error) throw error;
+      // Punkte/XP serverseitig spiegeln (für Rangliste & Admin)
+      await supabase.from('profiles').update({ points: Math.floor(s.xp || 0) }).eq('id', userId);
     } catch (e) {
       console.warn('Cloud-Speichern fehlgeschlagen:', e.message || e);
       dirty = true; // beim nächsten Mal erneut versuchen

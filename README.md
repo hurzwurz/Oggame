@@ -93,13 +93,38 @@ Voraussetzungen. Die Oberfläche und der Bau funktionieren dann automatisch.
 4. Beute reinvestieren, **Forschung** vorantreiben, größere Flotten bauen.
 5. Aufstellungen vorab im **Simulator** testen.
 
-## Roadmap (Ideen)
+## Multiplayer mit Supabase (in Arbeit)
+
+Ziel ist echtes Multiplayer: gemeinsame Galaxie, Login und serverseitig
+gespeicherter, fairer Spielstand. Umsetzung in Phasen:
+
+1. **Fundament** – Auth + DB-Schema, geteilte Galaxie mit echten Spieler-
+   planeten, Cloud-Speicher. *(Schema & Anbindung vorbereitet.)*
+2. **Server-autoritativ** – Produktion & Bau serverseitig (gegen Cheating).
+3. **PvP** – Flotten/Kämpfe gegen echte Spieler per Edge Function.
+
+Das Frontend bleibt statisch auf GitHub Pages und spricht direkt mit Supabase.
+
+### Einrichtung
+
+1. Projekt auf <https://supabase.com> anlegen (Region Europa empfohlen).
+2. `supabase/schema.sql` im **SQL Editor** des Dashboards ausführen.
+3. **Project Settings → API**: Project URL und `anon public` Key kopieren und
+   in `src/net/config.js` eintragen (beide Werte sind öffentlich unbedenklich
+   und durch Row-Level-Security geschützt – den `service_role`-Key niemals
+   ins Frontend!).
+4. **Authentication → Providers → Email** aktivieren (für Tests ggf. „Confirm
+   email" deaktivieren).
+
+Solange in `config.js` Platzhalter stehen, läuft das Spiel im lokalen
+Offline-Modus (localStorage) weiter.
+
+## Roadmap (weitere Ideen)
 
 - Mehrere Planeten / Kolonien (Astrophysik nutzt bereits den Platz dafür)
 - Trümmerfelder einsammeln (Recycler-Mission) & Transport zwischen Planeten
 - Monde, Sprungtor, Phalanx-Sensor
 - Rapidfire im Kampfmodell, NPC-Gegenangriffe
-- Multiplayer-Backend
 
 ## Lizenz
 

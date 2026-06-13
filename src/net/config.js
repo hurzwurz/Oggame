@@ -10,5 +10,5 @@
 // Solange hier Platzhalter stehen, läuft das Spiel im lokalen Offline-Modus
 // (localStorage) weiter.
 
-export const SUPABASE_URL = 'DEINE_PROJECT_URL_HIER';
+export const SUPABASE_URL = 'https://guclzlianvalcmcqrwub.supabase.co';
 export const SUPABASE_ANON_KEY = 'DEIN_ANON_PUBLIC_KEY_HIER';

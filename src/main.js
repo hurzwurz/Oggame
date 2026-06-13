@@ -8,6 +8,7 @@ import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthCh
 import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
 import * as Social from './net/social.js';
 import * as Pvp from './net/pvp.js';
+import * as Coins from './net/coins.js';
 
 // ------------------------------------------------------------- globaler Zustand
 let game = null;
@@ -16,6 +17,7 @@ let cloudSaver = null;
 let players = []; // andere Spieler aus der Galaxie
 let allianceData = { online: false };
 let friendData = { online: false };
+let isAdmin = false;
 
 const dispatch = { g: 1, s: 1, p: 1, mission: 'attack' };
 const sim = {
@@ -38,6 +40,7 @@ const TABS = {
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
+  admin: { label: '🛡️ Admin', render: () => V.renderAdmin({ online: !!userInfo, isAdmin }) },
 };
 const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports']);
 let activeTab = 'overview';
@@ -83,7 +86,10 @@ async function startOnline(user) {
   game = new Game({ initialState: buildInitialState(row, user.id), onSave: cloudSaver.onSave });
   userInfo = { id: user.id, email: user.email, planetId: row.id };
   dispatch.g = row.galaxy; dispatch.s = row.system; dispatch.p = row.position;
+  game.coins = 0; // Online-Marker (aktiviert Coins-Anzeige/Skip)
   await refreshPlayers();
+  try { game.coins = await Coins.getCoins(); } catch (e) { console.warn('Coins:', e.message || e); }
+  try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
   startGameUI();
   // Bei Logout/Token-Verlust zurück zum Login.
   onAuthChange((u) => { if (!u) location.reload(); });
@@ -128,6 +134,30 @@ async function refreshFriends() {
   if (activeTab === 'friends') renderView();
 }
 
+async function doSkip(cost, kind) {
+  try {
+    game.coins = await Coins.spendCoins(cost);
+    if (kind === 'building') game.skipBuilding();
+    else if (kind === 'research') game.skipResearch();
+    toast('Sofort fertiggestellt.', true);
+    renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
+async function doAdminGrant() {
+  const u = (viewEl.querySelector('#adm-user').value || '').trim();
+  const a = parseInt(viewEl.querySelector('#adm-amount').value, 10) || 0;
+  if (!u) return toast('Bitte Spielername angeben.', false);
+  try {
+    const bal = await Coins.adminGrant(u, a);
+    toast(`${u} hat jetzt ${bal} Coins.`, true);
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
 async function doPvpAttack(coords, ships) {
   if (!Object.keys(ships).length) return toast('Keine Schiffe ausgewählt.', false);
   for (const [id, n] of Object.entries(ships)) {
@@ -149,6 +179,7 @@ async function doPvpAttack(coords, ships) {
       target: coords, winner: res.winner, loot: res.loot || {},
     });
     game.save();
+    try { game.coins = await Coins.getCoins(); } catch { /* Coins-Anzeige optional */ }
     const msg = res.winner === 'attacker' ? 'Sieg! Beute eingefahren.' : res.winner === 'defender' ? 'Niederlage – Flotte dezimiert.' : 'Unentschieden.';
     toast(`PvP: ${msg}`, res.winner === 'attacker');
     activeTab = 'reports';
@@ -352,6 +383,7 @@ function startGameUI() {
 
 function renderTabs() {
   tabsEl.innerHTML = Object.entries(TABS)
+    .filter(([key]) => key !== 'admin' || isAdmin)
     .map(([key, t]) => `<button class="tab ${key === activeTab ? 'active' : ''}" data-tab="${key}">${t.label}</button>`)
     .join('');
 }
@@ -429,6 +461,9 @@ function onViewClick(ev) {
     doSocial(btn);
     return;
   }
+
+  if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
+  if (btn.id === 'admin-grant') { doAdminGrant(); return; }
 
   if (btn.classList.contains('build-btn') && btn.dataset.kind) {
     const { kind, id } = btn.dataset;

@@ -73,7 +73,14 @@ export function renderTopbar(game) {
       <span class="res-label">${getIcon('energy')} Energie</span>
       <span class="res-val">${fmt(e.produced - e.consumed)}</span>
       <span class="res-rate">${fmt(e.produced)} / ${fmt(e.consumed)}</span>
-    </div>`
+    </div>` +
+    (typeof game.coins === 'number'
+      ? `<div class="res c-coin">
+          <span class="res-label">🪙 Coins</span>
+          <span class="res-val">${fmt(game.coins)}</span>
+          <span class="res-rate">durch Kämpfe</span>
+        </div>`
+      : '')
   );
 }
 
@@ -85,10 +92,13 @@ export function renderOverview(game) {
   const q = game.state.queues;
   const now = Date.now();
 
-  const queueRow = (label, item) => {
-    if (!item) return `<tr><td>${label}</td><td>–</td><td>–</td></tr>`;
+  const online = typeof game.coins === 'number';
+  const queueRow = (label, item, kind) => {
+    if (!item) return `<tr><td>${label}</td><td>–</td><td>–</td><td></td></tr>`;
     const remaining = (item.finishAt - now) / 1000;
-    return `<tr><td>${label}</td><td>${game.nameOf(item.id)}</td><td>${fmtTime(remaining)}</td></tr>`;
+    const cost = Math.max(1, Math.ceil(remaining / 300));
+    const skip = online ? `<button class="skip" data-kind="${kind}" data-cost="${cost}">⏩ ${cost} 🪙</button>` : '';
+    return `<tr><td>${label}</td><td>${game.nameOf(item.id)}</td><td>${fmtTime(remaining)}</td><td>${skip}</td></tr>`;
   };
 
   let shipyardRows = '';
@@ -100,7 +110,7 @@ export function renderOverview(game) {
         i === 0
           ? (job.nextAt - now) / 1000 + (job.remaining - 1) * job.perUnitSeconds
           : job.remaining * job.perUnitSeconds;
-      shipyardRows += `<tr><td>Werft</td><td>${game.nameOf(job.id)} ×${job.remaining}</td><td>${fmtTime(remaining)}</td></tr>`;
+      shipyardRows += `<tr><td>Werft</td><td>${game.nameOf(job.id)} ×${job.remaining}</td><td>${fmtTime(remaining)}</td><td></td></tr>`;
     });
   }
 
@@ -125,10 +135,10 @@ export function renderOverview(game) {
         <div>
           <h3>Warteschlangen</h3>
           <table class="queue">
-            <thead><tr><th>Bereich</th><th>Auftrag</th><th>Restzeit</th></tr></thead>
+            <thead><tr><th>Bereich</th><th>Auftrag</th><th>Restzeit</th><th></th></tr></thead>
             <tbody>
-              ${queueRow('Gebäude', q.building)}
-              ${queueRow('Forschung', q.research)}
+              ${queueRow('Gebäude', q.building, 'building')}
+              ${queueRow('Forschung', q.research, 'research')}
               ${shipyardRows}
             </tbody>
           </table>
@@ -710,4 +720,20 @@ export function renderFriends(state) {
     ${incoming.length ? `<div class="panel"><h3>Offene Anfragen</h3><table class="queue"><tbody>${inRows}</tbody></table></div>` : ''}
     <div class="panel"><h3>Freunde</h3><table class="queue"><tbody>${accRows}</tbody></table></div>
     ${outgoing.length ? `<div class="panel"><h3>Gesendet</h3><table class="queue"><tbody>${outRows}</tbody></table></div>` : ''}`;
+}
+
+// ------------------------------------------------------------------ Admin
+
+export function renderAdmin(state) {
+  if (!state.online) return `<div class="panel"><p class="muted">Nur im Online-Modus.</p></div>`;
+  if (!state.isAdmin) return `<div class="panel"><p class="muted">Kein Zugriff – nur für Admins.</p></div>`;
+  return `<div class="panel">
+    <h2>🛡️ Admin</h2>
+    <p class="muted">Coins an einen Spieler vergeben (negativ = abziehen).</p>
+    <div class="dispatch-row">
+      <label>Spielername<input id="adm-user" placeholder="Spielername" /></label>
+      <label>Coins<input id="adm-amount" type="number" value="100" /></label>
+      <button id="admin-grant" class="build-btn" style="align-self:end">Vergeben</button>
+    </div>
+  </div>`;
 }

@@ -30,7 +30,7 @@ body {
 /* ----------------------------------------------------------- Topbar */
 #topbar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -56,6 +56,12 @@ body {
 .c-crystal { color: var(--crystal); }
 .c-deut { color: var(--deut); }
 .c-energy { color: var(--energy); }
+.c-coin { color: #ffcf5a; }
+.skip {
+  background: #2a2340; border: 1px solid #6a5acd; color: #cdbcff;
+  border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px;
+}
+.skip:hover { border-color: #9b8cff; }
 
 /* ----------------------------------------------------------- Tabs */
 #tabs {

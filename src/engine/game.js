@@ -250,6 +250,26 @@ export class Game {
     return { ok: true, amount };
   }
 
+  /** Schließt den laufenden Gebäude-Auftrag sofort ab (Coins-Skip). */
+  skipBuilding() {
+    const q = this.state.queues.building;
+    if (!q) return false;
+    this.state.buildings[q.id] = (this.state.buildings[q.id] || 0) + 1;
+    this.state.queues.building = null;
+    this.save();
+    return true;
+  }
+
+  /** Schließt die laufende Forschung sofort ab (Coins-Skip). */
+  skipResearch() {
+    const q = this.state.queues.research;
+    if (!q) return false;
+    this.state.research[q.id] = (this.state.research[q.id] || 0) + 1;
+    this.state.queues.research = null;
+    this.save();
+    return true;
+  }
+
   _affordableAmount(def) {
     const r = this.state.resources;
     const c = def.cost;

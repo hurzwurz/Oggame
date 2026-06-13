@@ -162,6 +162,12 @@ begin
     (tp.owner, 'pvp_defense', jsonb_build_object('from',jsonb_build_array(ap.galaxy,ap.system,ap.position),
         'winner',winner,'loot',jsonb_build_object('metal',loot_m,'crystal',loot_c,'deuterium',loot_d)));
 
+  -- Coins als Kampfbelohnung (nur durch Kämpfe verdienbar)
+  if winner = 'attacker' then perform public.award_coins(me, 10);
+  elsif winner = 'defender' then perform public.award_coins(tp.owner, 10);
+  else perform public.award_coins(me, 2); perform public.award_coins(tp.owner, 2);
+  end if;
+
   return jsonb_build_object('winner',winner,
     'loot',jsonb_build_object('metal',loot_m,'crystal',loot_c,'deuterium',loot_d),
     'attacker_ships',new_ap_ships,

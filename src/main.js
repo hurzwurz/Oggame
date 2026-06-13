@@ -312,6 +312,15 @@ async function doAdmin(btn) {
       toast(`${user}: Level ${n} gesetzt.`, true);
       return refreshAdmin();
     }
+    if (btn.classList.contains('admin-res')) {
+      if (typeof prompt !== 'function') return;
+      const v = prompt(`Ressourcen für ${user} setzen – Metall,Kristall,Deuterium,Gold,Titan:`, '0,0,0,0,0');
+      if (v === null) return;
+      const p = v.split(',').map((x) => parseInt(x.trim(), 10) || 0);
+      await Coins.adminSetResources(user, p[0] || 0, p[1] || 0, p[2] || 0, p[3] || 0, p[4] || 0);
+      toast(`${user}: Ressourcen gesetzt.`, true);
+      return refreshAdmin();
+    }
     if (btn.classList.contains('admin-ban')) {
       await Coins.adminSetBanned(btn.dataset.user, true);
       toast(`${btn.dataset.user} gesperrt.`, true);
@@ -625,6 +634,7 @@ function onViewClick(ev) {
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.id === 'admin-refresh' || btn.classList.contains('admin-gift') ||
       btn.classList.contains('admin-xp') || btn.classList.contains('admin-level') ||
+      btn.classList.contains('admin-res') ||
       btn.classList.contains('admin-ban') || btn.classList.contains('admin-unban')) {
     doAdmin(btn); return;
   }

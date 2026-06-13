@@ -83,6 +83,8 @@ export function renderTopbar(game) {
       <span class="res-val">${fmt(e.produced - e.consumed)}</span>
       <span class="res-rate">${fmt(e.produced)} / ${fmt(e.consumed)}</span>
     </div>` +
+    (r.gold ? `<div class="res c-gold"><span class="res-label">${getIcon('gold')} Gold</span><span class="res-val">${fmt(r.gold)}</span><span class="res-rate">Sonderressource</span></div>` : '') +
+    (r.titan ? `<div class="res c-titan"><span class="res-label">${getIcon('titan')} Titan</span><span class="res-val">${fmt(r.titan)}</span><span class="res-rate">Sonderressource</span></div>` : '') +
     (typeof game.coins === 'number'
       ? `<div class="res c-coin">
           <span class="res-label">🪙 Coins</span>
@@ -773,6 +775,7 @@ export function renderAdmin(state) {
               <button class="admin-gift" data-user="${p.username}">🪙 Coins</button>
               <button class="admin-xp" data-user="${p.username}">⭐ XP</button>
               <button class="admin-level" data-user="${p.username}">🎚 Level</button>
+              <button class="admin-res" data-user="${p.username}">📦 Res</button>
               ${p.banned
                 ? `<button class="admin-unban" data-user="${p.username}">✅ Frei</button>`
                 : `<button class="admin-ban ghost" data-user="${p.username}">🚫 Bann</button>`}

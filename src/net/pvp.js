@@ -17,3 +17,21 @@ export async function attackPlayer(coords, ships) {
   if (error) throw error;
   return data;
 }
+
+/** Löst einen PvP-Angriff bei Ankunft serverseitig auf. */
+export async function resolvePvpAttack(coords, ships) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { data, error } = await sb.rpc('resolve_pvp_attack', { t_g: coords[0], t_s: coords[1], t_p: coords[2], atk_ships: ships });
+  if (error) throw error;
+  return data;
+}
+
+/** Spioniert einen Spieler aus (Momentaufnahme). */
+export async function spyPlayer(coords) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { data, error } = await sb.rpc('spy_player', { t_g: coords[0], t_s: coords[1], t_p: coords[2] });
+  if (error) throw error;
+  return data;
+}

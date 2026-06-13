@@ -79,3 +79,23 @@ begin
     where username = target_username;
 end $$;
 grant execute on function public.admin_set_level(text, int) to authenticated;
+
+-- Admin: Ressourcen eines Spielers setzen (auf seinem Heimatplaneten).
+create or replace function public.admin_set_resources(
+  target_username text, m bigint, c bigint, d bigint, g bigint, ti bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare tid uuid; pid uuid;
+begin
+  if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
+    raise exception 'Keine Admin-Rechte';
+  end if;
+  select id into tid from public.profiles where username = target_username;
+  if tid is null then raise exception 'Spieler nicht gefunden'; end if;
+  select id into pid from public.planets where owner = tid order by created_at limit 1;
+  if pid is null then raise exception 'Spieler hat noch keinen Planeten'; end if;
+  update public.planets set resources = jsonb_build_object(
+    'metal', greatest(0, m), 'crystal', greatest(0, c), 'deuterium', greatest(0, d),
+    'gold', greatest(0, g), 'titan', greatest(0, ti)
+  ) where id = pid;
+end $$;
+grant execute on function public.admin_set_resources(text, bigint, bigint, bigint, bigint, bigint) to authenticated;

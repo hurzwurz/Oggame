@@ -4,7 +4,7 @@
 
 export const ICONS = {
   // Ressourcen
-  metal: '⛏️', crystal: '💎', deuterium: '🛢️', energy: '⚡',
+  metal: '⛏️', crystal: '💎', deuterium: '🛢️', energy: '⚡', gold: '🟡', titan: '🔩',
 
   // Gebäude
   metalMine: '⛏️', crystalMine: '💎', deuteriumSynth: '⚗️', solarPlant: '☀️',

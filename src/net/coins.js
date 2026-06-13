@@ -79,3 +79,13 @@ export async function adminSetLevel(username, level) {
   const { error } = await sb.rpc('admin_set_level', { target_username: username, lvl: level });
   if (error) throw error;
 }
+
+/** Admin: Ressourcen eines Spielers setzen. */
+export async function adminSetResources(username, m, c, d, g, ti) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { error } = await sb.rpc('admin_set_resources', {
+    target_username: username, m, c, d, g, ti,
+  });
+  if (error) throw error;
+}

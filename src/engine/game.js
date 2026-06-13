@@ -9,7 +9,7 @@ import { loadGame, saveGame } from './storage.js';
 import { simulateBattle } from './combat.js';
 import * as G from '../data/galaxy.js';
 
-const STARTING_RESOURCES = { metal: 500, crystal: 500, deuterium: 100 };
+const STARTING_RESOURCES = { metal: 500, crystal: 500, deuterium: 100, gold: 0, titan: 0 };
 
 function defaultState() {
   return {

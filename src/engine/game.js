@@ -6,6 +6,8 @@ import { SHIP_MAP } from '../data/ships.js';
 import { DEFENSE_MAP } from '../data/defenses.js';
 import * as F from './formulas.js';
 import { loadGame, saveGame } from './storage.js';
+import { simulateBattle } from './combat.js';
+import * as G from '../data/galaxy.js';
 
 const STARTING_RESOURCES = { metal: 500, crystal: 500, deuterium: 100 };
 
@@ -14,6 +16,7 @@ function defaultState() {
     version: 1,
     lastTick: Date.now(),
     planetName: 'Heimatplanet',
+    coords: [...G.HOME_COORDS],
     resources: { ...STARTING_RESOURCES },
     buildings: {},
     research: {},
@@ -24,6 +27,10 @@ function defaultState() {
       research: null, // { id, finishAt }
       shipyard: [], // [ { id, kind, remaining, perUnitSeconds, nextAt } ]
     },
+    galaxy: G.generateGalaxy(),
+    fleets: [], // unterwegs befindliche Missionen
+    reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
+    fleetSeq: 1,
   };
 }
 
@@ -40,12 +47,17 @@ export class Game {
     return {
       ...base,
       ...saved,
+      coords: saved.coords || base.coords,
       resources: { ...base.resources, ...(saved.resources || {}) },
       buildings: { ...(saved.buildings || {}) },
       research: { ...(saved.research || {}) },
       ships: { ...(saved.ships || {}) },
       defenses: { ...(saved.defenses || {}) },
       queues: { ...base.queues, ...(saved.queues || {}) },
+      galaxy: saved.galaxy && saved.galaxy.length ? saved.galaxy : base.galaxy,
+      fleets: saved.fleets || [],
+      reports: saved.reports || [],
+      fleetSeq: saved.fleetSeq || 1,
     };
   }
 
@@ -73,6 +85,21 @@ export class Game {
 
   capacities() {
     return F.capacities(this.state.buildings);
+  }
+
+  /** Kampfrelevante Forschungsstufen des Spielers. */
+  tech() {
+    return {
+      weaponsTech: this.state.research.weaponsTech || 0,
+      shieldTech: this.state.research.shieldTech || 0,
+      armorTech: this.state.research.armorTech || 0,
+    };
+  }
+
+  npcAt(coords) {
+    return this.state.galaxy.find(
+      (t) => t.coords[0] === coords[0] && t.coords[1] === coords[1] && t.coords[2] === coords[2]
+    );
   }
 
   nameOf(id) {
@@ -105,6 +132,8 @@ export class Game {
     res.deuterium = Math.max(0, Math.min(cap.deuterium, res.deuterium + (prod.deuterium / 3600) * elapsed));
 
     this._processQueues(now);
+    this._processFleets(now);
+    this._regenNpc(elapsed);
     this.state.lastTick = now;
   }
 
@@ -234,4 +263,258 @@ export class Game {
       .filter((j) => j.id === id && j.kind === kind)
       .reduce((sum, j) => sum + j.remaining, 0);
   }
+
+  // ------------------------------------------------------------- Flottenlogik
+
+  _addReport(report) {
+    report.id = this.state.fleetSeq++;
+    report.time = Date.now();
+    this.state.reports.unshift(report);
+    if (this.state.reports.length > 50) this.state.reports.length = 50;
+  }
+
+  /**
+   * Schickt eine Flotte auf eine Mission.
+   * @param mission 'attack' | 'espionage' | 'expedition'
+   * @param coords  Zielkoordinaten [g,s,p]
+   * @param ships   { id: count }
+   * @param cargo   { metal, crystal, deuterium } mitzuführende Ladung (optional)
+   */
+  sendFleet(mission, coords, ships, cargo = { metal: 0, crystal: 0, deuterium: 0 }) {
+    ships = Object.fromEntries(Object.entries(ships).filter(([, n]) => n > 0));
+    if (Object.keys(ships).length === 0) return { ok: false, error: 'Keine Schiffe ausgewählt' };
+
+    // Verfügbarkeit prüfen
+    for (const [id, n] of Object.entries(ships)) {
+      if ((this.state.ships[id] || 0) < n) return { ok: false, error: `Nicht genug ${this.nameOf(id)}` };
+    }
+    if (G.fleetSpeed(ships, this.state.research) <= 0)
+      return { ok: false, error: 'Diese Flotte kann nicht fliegen' };
+
+    if (mission === 'espionage' && !ships.espionageProbe)
+      return { ok: false, error: 'Spionage benötigt Spionagesonden' };
+
+    const dist = G.distance(this.state.coords, coords);
+    const ft = G.flightTime(dist, ships, this.state.research);
+    const fuel = G.fuelCost(dist, ships);
+    const cargoLoad = (cargo.metal || 0) + (cargo.crystal || 0) + (cargo.deuterium || 0);
+    const capacity = G.cargoCapacity(ships);
+    if (cargoLoad > capacity) return { ok: false, error: 'Ladung übersteigt Frachtraum' };
+
+    const needDeut = fuel + (cargo.deuterium || 0);
+    if (this.state.resources.deuterium < needDeut) return { ok: false, error: 'Nicht genug Deuterium (Treibstoff)' };
+    if (this.state.resources.metal < (cargo.metal || 0) || this.state.resources.crystal < (cargo.crystal || 0))
+      return { ok: false, error: 'Nicht genug Ressourcen für die Ladung' };
+
+    // Abziehen
+    for (const [id, n] of Object.entries(ships)) this.state.ships[id] -= n;
+    this.state.resources.deuterium -= needDeut;
+    this.state.resources.metal -= cargo.metal || 0;
+    this.state.resources.crystal -= cargo.crystal || 0;
+
+    const target = this.npcAt(coords);
+    const now = Date.now();
+    const holdSeconds = mission === 'expedition' ? 1800 : 0; // Expedition verweilt 30 min
+    this.state.fleets.push({
+      id: this.state.fleetSeq++,
+      mission,
+      target: coords,
+      targetName: target ? target.name : mission === 'expedition' ? 'Tiefer Weltraum' : 'Unbekannt',
+      ships,
+      cargo: { ...cargo },
+      fuel,
+      phase: 'outbound',
+      departAt: now,
+      arriveAt: now + ft * 1000,
+      returnAt: now + (ft * 2 + holdSeconds) * 1000,
+    });
+    this.save();
+    return { ok: true };
+  }
+
+  /** Bringt eine Flotte vorzeitig zurück (Rückruf). */
+  recallFleet(fleetId) {
+    const fleet = this.state.fleets.find((f) => f.id === fleetId);
+    if (!fleet || fleet.phase === 'returning') return { ok: false };
+    const now = Date.now();
+    const flown = Math.max(1, now - fleet.departAt);
+    fleet.phase = 'returning';
+    fleet.arriveAt = now;
+    fleet.returnAt = now + flown; // gleiche Zeit zurück wie schon geflogen
+    this.save();
+    return { ok: true };
+  }
+
+  _processFleets(now) {
+    const remaining = [];
+    for (const fleet of this.state.fleets) {
+      if (fleet.phase === 'outbound' && now >= fleet.arriveAt) {
+        this._resolveMission(fleet);
+        if (fleet.lost) continue; // Flotte vernichtet -> entfällt
+        fleet.phase = 'returning';
+      }
+      if (fleet.phase === 'returning' && now >= fleet.returnAt) {
+        this._returnFleet(fleet);
+        continue;
+      }
+      remaining.push(fleet);
+    }
+    this.state.fleets = remaining;
+  }
+
+  _resolveMission(fleet) {
+    if (fleet.mission === 'espionage') return this._resolveEspionage(fleet);
+    if (fleet.mission === 'expedition') return this._resolveExpedition(fleet);
+    return this._resolveAttack(fleet);
+  }
+
+  _resolveEspionage(fleet) {
+    const target = this.npcAt(fleet.target);
+    if (!target) {
+      this._addReport({ type: 'espionage', target: fleet.target, empty: true });
+      return;
+    }
+    this._addReport({
+      type: 'espionage',
+      target: fleet.target,
+      targetName: target.name,
+      resources: { ...target.resources },
+      defense: { ...target.defense },
+      fleet: { ...target.fleet },
+      tier: target.tier,
+    });
+  }
+
+  _resolveExpedition(fleet) {
+    const rng = Math.random();
+    const sizeFactor = Object.values(fleet.ships).reduce((a, b) => a + b, 0);
+    if (rng < 0.1) {
+      // Katastrophe: Teil der Flotte verloren
+      const losses = {};
+      for (const [id, n] of Object.entries(fleet.ships)) {
+        const lost = Math.ceil(n * (0.2 + Math.random() * 0.4));
+        if (lost > 0) { fleet.ships[id] -= lost; losses[id] = lost; }
+      }
+      if (Object.values(fleet.ships).every((n) => n <= 0)) fleet.lost = true;
+      this._addReport({ type: 'expedition', outcome: 'disaster', losses });
+    } else if (rng < 0.55) {
+      // Ressourcenfund (durch Frachtraum begrenzt)
+      const cap = G.cargoCapacity(fleet.ships) - ((fleet.cargo.metal || 0) + (fleet.cargo.crystal || 0) + (fleet.cargo.deuterium || 0));
+      const found = Math.floor(Math.min(cap, (5000 + Math.random() * 20000) * Math.max(1, Math.log2(sizeFactor + 1))));
+      const metal = Math.floor(found * 0.6);
+      const crystal = Math.floor(found * 0.3);
+      const deut = found - metal - crystal;
+      fleet.cargo.metal = (fleet.cargo.metal || 0) + metal;
+      fleet.cargo.crystal = (fleet.cargo.crystal || 0) + crystal;
+      fleet.cargo.deuterium = (fleet.cargo.deuterium || 0) + deut;
+      this._addReport({ type: 'expedition', outcome: 'resources', found: { metal, crystal, deuterium: deut } });
+    } else if (rng < 0.75) {
+      // Schiffsfund
+      const gained = { smallCargo: 1 + Math.floor(Math.random() * Math.max(1, sizeFactor / 5)) };
+      for (const [id, n] of Object.entries(gained)) fleet.ships[id] = (fleet.ships[id] || 0) + n;
+      this._addReport({ type: 'expedition', outcome: 'ships', gained });
+    } else {
+      this._addReport({ type: 'expedition', outcome: 'nothing' });
+    }
+  }
+
+  _resolveAttack(fleet) {
+    const target = this.npcAt(fleet.target);
+    if (!target || (Object.keys(target.fleet).length === 0 && Object.keys(target.defense).length === 0 &&
+        target.resources.metal + target.resources.crystal + target.resources.deuterium < 1)) {
+      this._addReport({ type: 'attack', target: fleet.target, empty: true });
+      return;
+    }
+
+    const result = simulateBattle(
+      { ships: fleet.ships, tech: this.tech() },
+      { ships: target.fleet, defense: target.defense, tech: target.tech || {} },
+      (this.state.fleetSeq * 2654435761) >>> 0
+    );
+
+    // Überlebende der angreifenden Flotte übernehmen
+    fleet.ships = { ...result.attacker.survivors };
+    const attackerWiped = Object.values(fleet.ships).every((n) => n <= 0);
+
+    // Ziel aktualisieren: Schiffe = Überlebende, Verteidigung 70 % wiederaufgebaut
+    target.fleet = { ...result.defender.shipSurvivors };
+    const rebuilt = {};
+    for (const [id, before] of Object.entries(result.defender.defenseBefore)) {
+      const surv = result.defender.defenseSurvivors[id] || 0;
+      rebuilt[id] = surv + Math.floor((before - surv) * 0.7);
+    }
+    target.defense = rebuilt;
+
+    let loot = { metal: 0, crystal: 0, deuterium: 0 };
+    if (result.winner === 'attacker' && !attackerWiped) {
+      const cap = G.cargoCapacity(fleet.ships);
+      let free = cap;
+      const take = (key) => {
+        const lootable = Math.floor(target.resources[key] * 0.5);
+        const amount = Math.min(lootable, free);
+        loot[key] = amount;
+        target.resources[key] -= amount;
+        free -= amount;
+      };
+      take('metal'); take('crystal'); take('deuterium');
+      fleet.cargo.metal += loot.metal;
+      fleet.cargo.crystal += loot.crystal;
+      fleet.cargo.deuterium += loot.deuterium;
+    }
+
+    if (attackerWiped) fleet.lost = true;
+
+    this._addReport({
+      type: 'attack',
+      target: fleet.target,
+      targetName: target.name,
+      winner: result.winner,
+      rounds: result.rounds,
+      attackerLosses: diffCounts(result.attacker.before, result.attacker.survivors),
+      defenderShipLosses: diffCounts(result.defender.shipsBefore, result.defender.shipSurvivors),
+      defenderDefenseLosses: diffCounts(result.defender.defenseBefore, result.defender.defenseSurvivors),
+      loot,
+      debris: result.debris,
+      attackerWiped,
+    });
+  }
+
+  _returnFleet(fleet) {
+    for (const [id, n] of Object.entries(fleet.ships)) {
+      if (n > 0) this.state.ships[id] = (this.state.ships[id] || 0) + n;
+    }
+    const cap = this.capacities();
+    const r = this.state.resources;
+    r.metal = Math.min(cap.metal, r.metal + (fleet.cargo.metal || 0));
+    r.crystal = Math.min(cap.crystal, r.crystal + (fleet.cargo.crystal || 0));
+    r.deuterium = Math.min(cap.deuterium, r.deuterium + (fleet.cargo.deuterium || 0));
+    this._addReport({
+      type: 'return',
+      targetName: fleet.targetName,
+      mission: fleet.mission,
+      cargo: { ...fleet.cargo },
+    });
+  }
+
+  /** NPC-Ressourcen regenerieren langsam zurück zur Ausgangsmenge. */
+  _regenNpc(elapsedSeconds) {
+    const hours = elapsedSeconds / 3600;
+    if (hours <= 0) return;
+    for (const t of this.state.galaxy) {
+      if (!t.cap) t.cap = { ...t.resources };
+      for (const key of ['metal', 'crystal', 'deuterium']) {
+        const rate = (t.cap[key] || 0) * 0.05; // 5 % der Kapazität pro Stunde
+        t.resources[key] = Math.min(t.cap[key] || 0, (t.resources[key] || 0) + rate * hours);
+      }
+    }
+  }
+}
+
+function diffCounts(before, after) {
+  const out = {};
+  for (const [id, n] of Object.entries(before || {})) {
+    const lost = n - (after[id] || 0);
+    if (lost > 0) out[id] = lost;
+  }
+  return out;
 }

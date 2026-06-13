@@ -182,7 +182,59 @@ button.ghost:hover { color: var(--err); border-color: var(--err); }
 #toast.ok { border-color: var(--ok); }
 #toast.err { border-color: var(--err); }
 
+/* ----------------------------------------------------------- Galaxie / Flotte */
+.panel + .panel { margin-top: 14px; }
+.dispatch h3 { margin-top: 0; }
+.dispatch-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.dispatch-row label, .ship-pick { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 3px; }
+.dispatch-row input, .dispatch-row select {
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: 6px 8px; width: 110px;
+}
+.ship-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px; margin-bottom: 12px;
+}
+.ship-pick span { color: var(--text); font-size: 12.5px; }
+.ship-pick input {
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: 5px 7px;
+}
+.estimate { font-size: 12.5px; margin-bottom: 10px; }
+.small { font-size: 11.5px; }
+.galaxy-tbl td button, .recall, .sim-del, .sim-add, .pick-target {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+}
+.galaxy-tbl td button:hover, .pick-target:hover, .recall:hover, .sim-add:hover { border-color: var(--accent); }
+.recall:hover { border-color: var(--err); color: var(--err); }
+
+/* ----------------------------------------------------------- Berichte */
+.reports { display: flex; flex-direction: column; gap: 10px; }
+.report-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+}
+.report-body { font-size: 13px; margin-top: 6px; line-height: 1.5; }
+.win { color: var(--ok); }
+.lose { color: var(--err); }
+
+/* ----------------------------------------------------------- Simulator */
+.sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.sim-grid h3 { margin-top: 0; }
+.sim-grid select {
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 5px; width: 100%;
+}
+.sim-grid .sim-count {
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 5px; width: 80px;
+}
+.sim-add { margin-right: 6px; margin-top: 8px; }
+.sim-actions { margin: 16px 0; text-align: center; }
+#sim-run { display: inline-block; padding: 10px 28px; }
+
 @media (max-width: 720px) {
   #topbar { grid-template-columns: repeat(2, 1fr); }
-  .grid2 { grid-template-columns: 1fr; }
+  .grid2, .sim-grid { grid-template-columns: 1fr; }
 }

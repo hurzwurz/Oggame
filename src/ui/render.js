@@ -5,6 +5,7 @@ import { RESEARCH, RESEARCH_MAP } from '../data/research.js';
 import { SHIPS, SHIP_MAP, SHIP_CLASSES } from '../data/ships.js';
 import { DEFENSES, DEFENSE_MAP } from '../data/defenses.js';
 import * as F from '../engine/formulas.js';
+import * as G from '../data/galaxy.js';
 
 // ------------------------------------------------------------------ Formatierung
 
@@ -241,5 +242,259 @@ export function renderFleet(game) {
   return `<div class="panel">
     ${rows(SHIP_MAP, game.state.ships, 'Schiffe')}
     ${rows(DEFENSE_MAP, game.state.defenses, 'Verteidigung')}
+  </div>`;
+}
+
+// --------------------------------------------------------------- Hilfsfunktionen
+
+function unitName(id) {
+  return (SHIP_MAP[id] && SHIP_MAP[id].name) || (DEFENSE_MAP[id] && DEFENSE_MAP[id].name) || id;
+}
+
+export function coordFmt(c) {
+  return `[${c[0]}:${c[1]}:${c[2]}]`;
+}
+
+function countList(map, sep = ', ') {
+  const entries = Object.entries(map || {}).filter(([, n]) => n > 0);
+  if (entries.length === 0) return '–';
+  return entries.map(([id, n]) => `${unitName(id)} ×${fmt(n)}`).join(sep);
+}
+
+const MISSION_LABELS = { attack: 'Angriff', espionage: 'Spionage', expedition: 'Expedition' };
+
+// ----------------------------------------------------------------- Galaxie
+
+export function renderGalaxy(game, dispatch) {
+  const coords = [dispatch.g, dispatch.s, dispatch.p];
+  const ownedShips = Object.entries(game.state.ships).filter(([, n]) => n > 0);
+
+  const missionOpts = Object.entries(MISSION_LABELS)
+    .map(([k, l]) => `<option value="${k}" ${dispatch.mission === k ? 'selected' : ''}>${l}</option>`)
+    .join('');
+
+  const shipInputs = ownedShips.length
+    ? ownedShips
+        .map(
+          ([id, n]) => `<label class="ship-pick">
+            <span>${SHIP_MAP[id].name} <small class="muted">(${fmt(n)})</small></span>
+            <input type="number" min="0" max="${n}" value="0" class="fleet-ship" data-id="${id}" />
+          </label>`
+        )
+        .join('')
+    : `<p class="muted">Keine Schiffe vorhanden. Baue zuerst Schiffe in der Werft.</p>`;
+
+  const form = `
+    <div class="panel dispatch">
+      <h3>Flotte entsenden</h3>
+      <div class="dispatch-row">
+        <label>Galaxie<input type="number" id="d-g" min="1" max="${G.GALAXY_COUNT}" value="${dispatch.g}" /></label>
+        <label>System<input type="number" id="d-s" min="1" max="${G.SYSTEM_COUNT}" value="${dispatch.s}" /></label>
+        <label>Position<input type="number" id="d-p" min="1" max="${G.POSITION_COUNT + 4}" value="${dispatch.p}" /></label>
+        <label>Mission<select id="d-mission">${missionOpts}</select></label>
+      </div>
+      <div class="ship-grid">${shipInputs}</div>
+      <div class="dispatch-row">
+        <label>Ladung Metall<input type="number" id="c-metal" min="0" value="0" /></label>
+        <label>Kristall<input type="number" id="c-crystal" min="0" value="0" /></label>
+        <label>Deuterium<input type="number" id="c-deut" min="0" value="0" /></label>
+      </div>
+      <div id="dispatch-estimate" class="estimate muted"></div>
+      <button id="send-fleet" class="build-btn" ${ownedShips.length ? '' : 'disabled'}>Flotte starten</button>
+      <p class="muted small">Tipp: Position ${G.POSITION_COUNT + 1}–${G.POSITION_COUNT + 4} = leerer Raum für <b>Expeditionen</b>.</p>
+    </div>`;
+
+  // Zielliste nach System gruppiert
+  const bySystem = {};
+  for (const t of game.state.galaxy) {
+    (bySystem[t.coords[1]] = bySystem[t.coords[1]] || []).push(t);
+  }
+  let list = '';
+  for (const s of Object.keys(bySystem).sort((a, b) => a - b)) {
+    list += `<h4 class="group">System ${s}</h4><table class="queue galaxy-tbl"><thead><tr>
+      <th>Pos.</th><th>Name</th><th>Tier</th><th>Distanz</th><th></th></tr></thead><tbody>`;
+    for (const t of bySystem[s].sort((a, b) => a.coords[2] - b.coords[2])) {
+      const dist = G.distance(game.state.coords, t.coords);
+      list += `<tr>
+        <td>${t.coords[2]}</td>
+        <td>${t.name}</td>
+        <td>${'★'.repeat(Math.min(5, Math.ceil(t.tier / 2)))}<span class="muted"> T${t.tier}</span></td>
+        <td>${fmt(dist)}</td>
+        <td><button class="pick-target" data-g="${t.coords[0]}" data-s="${t.coords[1]}" data-p="${t.coords[2]}">Ziel wählen</button></td>
+      </tr>`;
+    }
+    list += `</tbody></table>`;
+  }
+
+  return form + `<div class="panel">${list}</div>`;
+}
+
+/** Live-Schätzung für Distanz / Flugzeit / Treibstoff (im Dispatch-Formular). */
+export function flightEstimate(game, coords, ships) {
+  const dist = G.distance(game.state.coords, coords);
+  const speed = G.fleetSpeed(ships, game.state.research);
+  if (speed <= 0) return `Distanz ${fmt(dist)} · keine flugfähige Flotte ausgewählt`;
+  const ft = G.flightTime(dist, ships, game.state.research);
+  const fuel = G.fuelCost(dist, ships);
+  const cap = G.cargoCapacity(ships);
+  return `Distanz ${fmt(dist)} · Flugzeit ${fmtTime(ft)} (einfach) · Treibstoff ${fmt(fuel)} Deut · Frachtraum ${fmt(cap)}`;
+}
+
+// ------------------------------------------------------------- Flottenbewegungen
+
+export function renderMovements(game) {
+  const fleets = game.state.fleets;
+  if (fleets.length === 0) return `<div class="panel"><p class="muted">Keine Flotten unterwegs.</p></div>`;
+  const now = Date.now();
+  const rows = fleets
+    .map((f) => {
+      const arriving = f.phase === 'outbound';
+      const eta = arriving ? (f.arriveAt - now) / 1000 : (f.returnAt - now) / 1000;
+      return `<tr>
+        <td>${MISSION_LABELS[f.mission] || f.mission}</td>
+        <td>${f.targetName} ${coordFmt(f.target)}</td>
+        <td>${countList(f.ships)}</td>
+        <td>${arriving ? '→ unterwegs' : '← Rückflug'}</td>
+        <td>${fmtTime(eta)}</td>
+        <td>${arriving ? `<button class="recall" data-id="${f.id}">Rückruf</button>` : ''}</td>
+      </tr>`;
+    })
+    .join('');
+  return `<div class="panel"><table class="queue"><thead><tr>
+    <th>Mission</th><th>Ziel</th><th>Flotte</th><th>Status</th><th>Ankunft</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ------------------------------------------------------------------ Berichte
+
+export function renderReports(game) {
+  const reports = game.state.reports;
+  if (reports.length === 0) return `<div class="panel"><p class="muted">Noch keine Berichte.</p></div>`;
+  return `<div class="reports">${reports.map(reportCard).join('')}</div>`;
+}
+
+function reportCard(r) {
+  const t = new Date(r.time).toLocaleTimeString('de-DE');
+  if (r.type === 'attack') {
+    if (r.empty) return card('Angriff', t, `Ziel ${coordFmt(r.target)} war leer – keine Beute.`);
+    const verdict =
+      r.winner === 'attacker' ? '<b class="win">Sieg!</b>' : r.winner === 'defender' ? '<b class="lose">Niederlage</b>' : '<b>Unentschieden</b>';
+    const lootBits = (r.loot.metal || r.loot.crystal || r.loot.deuterium)
+      ? `Beute: ${costLine({ metal: r.loot.metal, crystal: r.loot.crystal, deuterium: r.loot.deuterium })}`
+      : 'Keine Beute';
+    return card(
+      `Angriff auf ${r.targetName} ${coordFmt(r.target)}`, t,
+      `${verdict} nach ${r.rounds} Runden.<br>
+       Eigene Verluste: ${countList(r.attackerLosses) || 'keine'}<br>
+       Gegner verlor: ${countList({ ...r.defenderShipLosses, ...r.defenderDefenseLosses }) || 'nichts'}<br>
+       ${lootBits}<br>Trümmerfeld: ${costLine({ metal: r.debris.metal, crystal: r.debris.crystal })}
+       ${r.attackerWiped ? '<br><b class="lose">Deine Flotte wurde vernichtet!</b>' : ''}`
+    );
+  }
+  if (r.type === 'espionage') {
+    if (r.empty) return card('Spionage', t, `Ziel ${coordFmt(r.target)} ist unbewohnt.`);
+    return card(
+      `Spionage: ${r.targetName} ${coordFmt(r.target)}`, t,
+      `Ressourcen: ${costLine(r.resources)}<br>
+       Flotte: ${countList(r.fleet)}<br>
+       Verteidigung: ${countList(r.defense)}`
+    );
+  }
+  if (r.type === 'expedition') {
+    const map = {
+      resources: () => `Ressourcenfund: ${costLine(r.found)}`,
+      ships: () => `Schiffe gefunden: ${countList(r.gained)}`,
+      disaster: () => `<b class="lose">Katastrophe!</b> Verluste: ${countList(r.losses)}`,
+      nothing: () => 'Nichts gefunden – die Weite des Alls bleibt still.',
+    };
+    return card('Expedition', t, (map[r.outcome] || map.nothing)());
+  }
+  if (r.type === 'return') {
+    const c = r.cargo;
+    const hasCargo = c.metal || c.crystal || c.deuterium;
+    return card('Flotte zurückgekehrt', t,
+      `Von ${r.targetName} (${MISSION_LABELS[r.mission] || r.mission}).${hasCargo ? `<br>Geladen: ${costLine(c)}` : ''}`);
+  }
+  return card('Bericht', t, '');
+}
+
+function card(title, time, body) {
+  return `<div class="report-card">
+    <div class="card-head"><h4>${title}</h4><span class="muted">${time}</span></div>
+    <div class="report-body">${body}</div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ Simulator
+
+export function renderSimulator(sim) {
+  const shipOpts = (selected) =>
+    SHIPS.map((s) => `<option value="${s.id}" ${s.id === selected ? 'selected' : ''}>${s.name}</option>`).join('');
+  const defOpts = DEFENSES.map((d) => `<option value="${d.id}">${d.name}</option>`).join('');
+
+  const sideRows = (side, list) =>
+    list.length
+      ? list
+          .map(
+            (row, i) => `<tr>
+        <td><select class="sim-unit" data-side="${side}" data-i="${i}">${
+              row.kind === 'defense' ? defOpts.replace(`value="${row.id}"`, `value="${row.id}" selected`) : shipOpts(row.id)
+            }</select></td>
+        <td><input type="number" min="1" value="${row.count}" class="sim-count" data-side="${side}" data-i="${i}" /></td>
+        <td><button class="sim-del" data-side="${side}" data-i="${i}">✕</button></td>
+      </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="3" class="muted">Noch keine Einheiten.</td></tr>`;
+
+  const techRow = (side) => `
+    <div class="dispatch-row">
+      <label>Waffen<input type="number" min="0" value="${sim[side].tech.weaponsTech}" class="sim-tech" data-side="${side}" data-tech="weaponsTech" /></label>
+      <label>Schild<input type="number" min="0" value="${sim[side].tech.shieldTech}" class="sim-tech" data-side="${side}" data-tech="shieldTech" /></label>
+      <label>Panzer<input type="number" min="0" value="${sim[side].tech.armorTech}" class="sim-tech" data-side="${side}" data-tech="armorTech" /></label>
+    </div>`;
+
+  return `
+    <div class="sim-grid">
+      <div class="panel">
+        <h3>Angreifer</h3>
+        ${techRow('attacker')}
+        <table class="queue"><tbody>${sideRows('attacker', sim.attacker.units)}</tbody></table>
+        <button class="sim-add" data-side="attacker" data-kind="ship">+ Schiff</button>
+      </div>
+      <div class="panel">
+        <h3>Verteidiger</h3>
+        ${techRow('defender')}
+        <table class="queue"><tbody>${sideRows('defender', sim.defender.units)}</tbody></table>
+        <button class="sim-add" data-side="defender" data-kind="ship">+ Schiff</button>
+        <button class="sim-add" data-side="defender" data-kind="defense">+ Verteidigung</button>
+      </div>
+    </div>
+    <div class="sim-actions">
+      <button id="sim-run" class="build-btn">Schlacht simulieren</button>
+    </div>
+    <div id="sim-result">${sim.result ? simResult(sim.result) : ''}</div>`;
+}
+
+function simResult(r) {
+  const verdict =
+    r.winner === 'attacker' ? '<b class="win">Angreifer siegt</b>'
+    : r.winner === 'defender' ? '<b class="lose">Verteidiger siegt</b>'
+    : '<b>Unentschieden</b>';
+  return `<div class="panel">
+    <h3>Ergebnis – ${verdict} (${r.rounds} Runden)</h3>
+    <div class="grid2">
+      <div>
+        <h4>Angreifer</h4>
+        <p>Eingesetzt: ${countList(r.attacker.before)}</p>
+        <p>Überlebt: ${countList(r.attacker.survivors) || '<span class="lose">vernichtet</span>'}</p>
+      </div>
+      <div>
+        <h4>Verteidiger</h4>
+        <p>Schiffe übrig: ${countList(r.defender.shipSurvivors) || 'keine'}</p>
+        <p>Verteidigung übrig: ${countList(r.defender.defenseSurvivors) || 'keine'}</p>
+      </div>
+    </div>
+    <p class="muted">Trümmerfeld: ${costLine({ metal: r.debris.metal, crystal: r.debris.crystal })}</p>
   </div>`;
 }

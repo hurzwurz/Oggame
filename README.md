@@ -4,7 +4,8 @@ Ein **OGame-inspiriertes Weltraum-Strategiespiel** für den Browser – mit eine
 bewusst großen Schiffsdatenbank und vollständig datengetriebenem Spielinhalt.
 
 Aktueller Stand: spielbares **Single-Player-MVP** mit Ressourcenwirtschaft,
-Gebäuden, Forschung, Schiffsbau und Verteidigung. Läuft komplett im Browser,
+Gebäuden, Forschung, Schiffsbau, Verteidigung, einer **NPC-Galaxie mit
+Flottenmissionen** und einem **Kampfsimulator**. Läuft komplett im Browser,
 **ohne externe Abhängigkeiten**, Spielstand wird lokal gespeichert.
 
 ## Features
@@ -22,6 +23,15 @@ Gebäuden, Forschung, Schiffsbau und Verteidigung. Läuft komplett im Browser,
   Tesla-Turm und Schildkuppeln.
 - **Bauwarteschlangen** für Gebäude, Forschung und Werft (sequenziell).
 - **Voraussetzungssystem**: Gebäude/Forschung schalten weitere Inhalte frei.
+- **Galaxie** mit prozedural erzeugten NPC-Planeten (Schwierigkeit steigt mit
+  Entfernung), inklusive Distanz-, Flugzeit- und Treibstoffberechnung.
+- **Flottenmissionen** in Echtzeit: **Angriff** (mit Beute & Trümmerfeld),
+  **Spionage** und **Expedition** (Zufallsereignisse). Flotten fliegen hin,
+  lösen die Mission aus und kehren zurück – inkl. **Rückruf**.
+- **Kampf-Engine** (rundenbasiert, Schilde/Hülle/Bounce/Explosionen),
+  beeinflusst durch Waffen-, Schild- und Panzerungsforschung.
+- **Kampfsimulator**: beliebige Flotten gegeneinander testen.
+- **Berichtssystem** für Kämpfe, Spionage, Expeditionen und Rückkehr.
 
 ## Starten
 
@@ -57,10 +67,12 @@ Dann im Browser öffnen: <http://localhost:8080>
     │   ├── buildings.js
     │   ├── research.js
     │   ├── ships.js      ← neue Schiffe hier eintragen
-    │   └── defenses.js
+    │   ├── defenses.js
+    │   └── galaxy.js     NPC-Generierung, Distanz/Flugzeit/Treibstoff
     ├── engine/           Spiellogik
     │   ├── formulas.js   Kosten / Produktion / Bauzeiten
-    │   ├── game.js       Zustand, Tick, Bauwarteschlangen
+    │   ├── combat.js     Rundenbasierte Kampf-Engine (testbar, deterministisch)
+    │   ├── game.js       Zustand, Tick, Bauwarteschlangen, Flottenmissionen
     │   └── storage.js    Speichern/Laden (localStorage)
     └── ui/
         └── render.js     View-Funktionen
@@ -71,12 +83,22 @@ Dann im Browser öffnen: <http://localhost:8080>
 Einfach einen Eintrag in `src/data/ships.js` ergänzen – Kosten, Kampfwerte und
 Voraussetzungen. Die Oberfläche und der Bau funktionieren dann automatisch.
 
+## Spielablauf in Kürze
+
+1. **Gebäude** ausbauen (Minen + Solarkraftwerk), bis Ressourcen fließen.
+2. **Roboterfabrik → Raumschiffwerft** bauen, dann erste **Schiffe**.
+3. In der **Galaxie** ein nahes (niedriges Tier) NPC-Ziel wählen und eine
+   Flotte auf **Angriff** schicken – Fortschritt unter **Flotten**, Ergebnis
+   unter **Berichte**.
+4. Beute reinvestieren, **Forschung** vorantreiben, größere Flotten bauen.
+5. Aufstellungen vorab im **Simulator** testen.
+
 ## Roadmap (Ideen)
 
 - Mehrere Planeten / Kolonien (Astrophysik nutzt bereits den Platz dafür)
-- Flottenbewegungen & Kampfsimulator zwischen Planeten
-- Galaxie-Ansicht, Trümmerfelder & Recycling
+- Trümmerfelder einsammeln (Recycler-Mission) & Transport zwischen Planeten
 - Monde, Sprungtor, Phalanx-Sensor
+- Rapidfire im Kampfmodell, NPC-Gegenangriffe
 - Multiplayer-Backend
 
 ## Lizenz

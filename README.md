@@ -128,10 +128,10 @@ Das Frontend bleibt statisch auf GitHub Pages und spricht direkt mit Supabase.
 Solange in `config.js` Platzhalter stehen, läuft das Spiel im lokalen
 Offline-Modus (localStorage) weiter.
 
-## Mini-Spiel: Kopfjagd 🎯
+## Mini-Spiel: Drück den Pazze 🎯
 
 Als kleines Extra gibt es ein eigenständiges Reaktionsspiel:
-[`kopfjagd.html`](kopfjagd.html). Triff den Kopf so oft wie möglich – er
+[`kopfjagd.html`](kopfjagd.html). Drück den Pazze so oft wie möglich – er
 springt nach jedem Treffer an eine zufällige Stelle. Es gibt **67 Sekunden**
 Zeit, eine Genauigkeitsanzeige und eine lokale **Rangliste** (im Browser
 gespeichert). Einfach nach dem Start des Dev-Servers

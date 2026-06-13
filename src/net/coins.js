@@ -38,3 +38,28 @@ export async function adminGrant(username, amount) {
   if (error) throw error;
   return Number(data) || 0;
 }
+
+/** Ist der Nutzer gesperrt? */
+export async function isBanned(userId) {
+  const sb = await getClient();
+  if (!sb) return false;
+  const { data } = await sb.from('profiles').select('is_banned').eq('id', userId).maybeSingle();
+  return !!(data && data.is_banned);
+}
+
+/** Admin: alle Spieler (Name, Punkte, Coins, Status). */
+export async function adminListPlayers() {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { data, error } = await sb.rpc('admin_list_players');
+  if (error) throw error;
+  return data || [];
+}
+
+/** Admin: Spieler sperren/freigeben. */
+export async function adminSetBanned(username, banned) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { error } = await sb.rpc('admin_set_banned', { target_username: username, banned });
+  if (error) throw error;
+}

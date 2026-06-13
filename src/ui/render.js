@@ -727,13 +727,44 @@ export function renderFriends(state) {
 export function renderAdmin(state) {
   if (!state.online) return `<div class="panel"><p class="muted">Nur im Online-Modus.</p></div>`;
   if (!state.isAdmin) return `<div class="panel"><p class="muted">Kein Zugriff – nur für Admins.</p></div>`;
-  return `<div class="panel">
-    <h2>🛡️ Admin</h2>
-    <p class="muted">Coins an einen Spieler vergeben (negativ = abziehen).</p>
-    <div class="dispatch-row">
-      <label>Spielername<input id="adm-user" placeholder="Spielername" /></label>
-      <label>Coins<input id="adm-amount" type="number" value="100" /></label>
-      <button id="admin-grant" class="build-btn" style="align-self:end">Vergeben</button>
+
+  const players = state.players || [];
+  const rows = players.length
+    ? players.map((p) => `<tr class="${p.banned ? 'banned-row' : ''}">
+        <td>${p.username}${p.banned ? ' <span class="lose">🚫</span>' : ''}</td>
+        <td>${fmt(p.points || 0)}</td>
+        <td>🪙 ${fmt(p.coins || 0)}</td>
+        <td>
+          <button class="admin-gift" data-user="${p.username}">+100 🪙</button>
+          ${p.banned
+            ? `<button class="admin-unban" data-user="${p.username}">Freigeben</button>`
+            : `<button class="admin-ban ghost" data-user="${p.username}">Bannen</button>`}
+        </td>
+      </tr>`).join('')
+    : `<tr><td colspan="4" class="muted">${state.loading ? 'Lädt…' : 'Keine Spieler.'}</td></tr>`;
+
+  return `
+    <div class="panel">
+      <h2>🛡️ Admin</h2>
+      <p class="muted">Coins gezielt vergeben (negativ = abziehen).</p>
+      <div class="dispatch-row">
+        <label>Spielername<input id="adm-user" placeholder="Spielername" /></label>
+        <label>Coins<input id="adm-amount" type="number" value="100" /></label>
+        <button id="admin-grant" class="build-btn" style="align-self:end">Vergeben</button>
+      </div>
     </div>
-  </div>`;
+    <div class="panel">
+      <h3>Spielerliste <span class="muted small">(${players.length})</span>
+        <button id="admin-refresh" class="ghost" style="float:right">Aktualisieren</button></h3>
+      <table class="queue"><thead><tr><th>Spieler</th><th>Punkte</th><th>Coins</th><th>Aktionen</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`;
+}
+
+export function renderBanned() {
+  return `<div class="login-wrap"><div class="panel login-card">
+    <h2>🚫 Account gesperrt</h2>
+    <p class="muted">Dein Zugang wurde von einem Admin gesperrt. Bei Fragen wende dich an den Spielbetreiber.</p>
+    <button class="ghost" onclick="location.reload()">Neu laden</button>
+  </div></div>`;
 }

@@ -18,6 +18,7 @@ let players = []; // andere Spieler aus der Galaxie
 let allianceData = { online: false };
 let friendData = { online: false };
 let isAdmin = false;
+let adminData = { online: false, isAdmin: false, players: [] };
 
 const dispatch = { g: 1, s: 1, p: 1, mission: 'attack' };
 const sim = {
@@ -40,7 +41,7 @@ const TABS = {
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
-  admin: { label: '🛡️ Admin', render: () => V.renderAdmin({ online: !!userInfo, isAdmin }) },
+  admin: { label: '🛡️ Admin', render: () => V.renderAdmin(adminData) },
 };
 const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports']);
 let activeTab = 'overview';
@@ -81,6 +82,10 @@ function startOffline(notice) {
 async function startOnline(user) {
   app.innerHTML = `<div class="login-wrap"><div class="panel login-card"><h2>🚀 Oggame</h2><p class="muted">Lade dein Imperium…</p></div></div>`;
   await ensureProfile(user);
+  // Gesperrte Accounts blockieren
+  try {
+    if (await Coins.isBanned(user.id)) { app.innerHTML = V.renderBanned(); return; }
+  } catch { /* ignorieren, falls Spalte/Funktion fehlt */ }
   const row = await ensureHomePlanet(user.id);
   cloudSaver = makeCloudSaver(row.id, user.id);
   game = new Game({ initialState: buildInitialState(row, user.id), onSave: cloudSaver.onSave });
@@ -185,6 +190,41 @@ async function doPvpAttack(coords, ships) {
     activeTab = 'reports';
     renderTabs();
     renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
+async function refreshAdmin() {
+  adminData = { online: !!userInfo, isAdmin, players: adminData.players || [], loading: true };
+  if (activeTab === 'admin') renderView();
+  if (!userInfo || !isAdmin) { adminData.loading = false; return; }
+  try {
+    adminData = { online: true, isAdmin: true, players: await Coins.adminListPlayers() };
+  } catch (e) {
+    adminData = { online: true, isAdmin: true, players: [], error: friendlyError(e) };
+  }
+  if (activeTab === 'admin') renderView();
+}
+
+async function doAdmin(btn) {
+  try {
+    if (btn.id === 'admin-refresh') return refreshAdmin();
+    if (btn.classList.contains('admin-gift')) {
+      const bal = await Coins.adminGrant(btn.dataset.user, 100);
+      toast(`${btn.dataset.user}: ${bal} Coins.`, true);
+      return refreshAdmin();
+    }
+    if (btn.classList.contains('admin-ban')) {
+      await Coins.adminSetBanned(btn.dataset.user, true);
+      toast(`${btn.dataset.user} gesperrt.`, true);
+      return refreshAdmin();
+    }
+    if (btn.classList.contains('admin-unban')) {
+      await Coins.adminSetBanned(btn.dataset.user, false);
+      toast(`${btn.dataset.user} freigegeben.`, true);
+      return refreshAdmin();
+    }
   } catch (e) {
     toast(friendlyError(e), false);
   }
@@ -345,6 +385,10 @@ function friendlyError(e) {
 
 function startGameUI() {
   app.innerHTML = `
+    <div id="brand">
+      <img src="assets/world/planet.png" class="logo" alt="" onerror="this.style.display='none'" />
+      <span>OGGAME <small>Weltraum-Strategie</small></span>
+    </div>
     <header id="topbar"></header>
     <nav id="tabs"></nav>
     <main id="view"></main>
@@ -446,6 +490,7 @@ async function onTabClick(ev) {
   }
   if (activeTab === 'alliance') await refreshAlliance();
   if (activeTab === 'friends') await refreshFriends();
+  if (activeTab === 'admin') await refreshAdmin();
 }
 
 function onViewClick(ev) {
@@ -464,6 +509,10 @@ function onViewClick(ev) {
 
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
+  if (btn.id === 'admin-refresh' || btn.classList.contains('admin-gift') ||
+      btn.classList.contains('admin-ban') || btn.classList.contains('admin-unban')) {
+    doAdmin(btn); return;
+  }
 
   if (btn.classList.contains('build-btn') && btn.dataset.kind) {
     const { kind, id } = btn.dataset;

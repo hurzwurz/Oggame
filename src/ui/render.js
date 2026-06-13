@@ -808,3 +808,38 @@ export function renderBanned() {
     <button class="ghost" onclick="location.reload()">Neu laden</button>
   </div></div>`;
 }
+
+// ------------------------------------------------------------------ Profil
+
+export function renderProfile(state) {
+  if (!state.online) return `<div class="panel"><p class="muted">Profil gibt es nur im Online-Modus (eingeloggt).</p></div>`;
+  return `
+    <div class="panel">
+      <h2>👤 ${state.username || 'Profil'}</h2>
+      <div class="grid2">
+        <div>
+          <h3>Übersicht</h3>
+          <ul class="stats">
+            <li>Spielername<b>${state.username || '–'}</b></li>
+            <li>E-Mail<b>${state.email || '–'}</b></li>
+            <li>⭐ Level<b>${state.level || 1}</b></li>
+            <li>🪙 Coins<b>${fmt(state.coins || 0)}</b></li>
+            <li>Punkte<b>${fmt(state.points || 0)}</b></li>
+            ${state.isAdmin ? '<li>Rolle<b>🛡️ Admin</b></li>' : ''}
+          </ul>
+        </div>
+        <div>
+          <h3>Einstellungen</h3>
+          <div class="dispatch-row">
+            <label>Spielername<input id="pf-username" value="${state.username || ''}" maxlength="20" /></label>
+            <button id="pf-save-name" class="build-btn" style="align-self:end">Name speichern</button>
+          </div>
+          <div class="dispatch-row">
+            <label>Planetenname<input id="pf-planet" value="${state.planetName || ''}" maxlength="30" /></label>
+            <button id="pf-save-planet" class="build-btn" style="align-self:end">Planet speichern</button>
+          </div>
+          <button id="pf-logout" class="ghost" style="margin-top:10px">Logout</button>
+        </div>
+      </div>
+    </div>`;
+}

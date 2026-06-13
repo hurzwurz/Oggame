@@ -41,8 +41,22 @@ const TABS = {
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
+  profile: { label: 'Profil', render: () => V.renderProfile(profileState()) },
   admin: { label: '🛡️ Admin', render: () => V.renderAdmin(adminData) },
 };
+
+function profileState() {
+  return {
+    online: !!userInfo,
+    username: userInfo && userInfo.username,
+    email: userInfo && userInfo.email,
+    planetName: game && game.state.planetName,
+    level: game && game.level ? game.level() : 1,
+    coins: game && game.coins,
+    points: (userInfo && userInfo.points) || 0,
+    isAdmin,
+  };
+}
 const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports']);
 let activeTab = 'overview';
 
@@ -104,6 +118,7 @@ async function startOnline(user) {
   await refreshPlayers();
   try { game.coins = await Coins.getCoins(); } catch (e) { console.warn('Coins:', e.message || e); }
   try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
+  try { const pr = await Social.getProfile(user.id); if (pr) { userInfo.username = pr.username; userInfo.points = pr.points || 0; } } catch { /* Name optional */ }
   startGameUI();
   // Bei Logout/Token-Verlust zurück zum Login.
   onAuthChange((u) => { if (!u) location.reload(); });
@@ -146,6 +161,36 @@ async function refreshFriends() {
     friendData = { online: true, error: friendlyError(e) };
   }
   if (activeTab === 'friends') renderView();
+}
+
+async function doSaveName() {
+  const name = (viewEl.querySelector('#pf-username').value || '').trim();
+  if (name.length < 2) return toast('Name zu kurz (min. 2 Zeichen).', false);
+  try {
+    await Social.updateUsername(userInfo.id, name);
+    userInfo.username = name;
+    const who = document.getElementById('who');
+    if (who) who.textContent = '👤 ' + name;
+    toast('Spielername gespeichert.', true);
+    renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
+function doSavePlanet() {
+  const n = (viewEl.querySelector('#pf-planet').value || '').trim();
+  if (!n) return toast('Bitte einen Planetennamen angeben.', false);
+  game.state.planetName = n;
+  game.save();
+  toast('Planetenname gespeichert.', true);
+  renderView();
+}
+
+async function doLogout() {
+  if (cloudSaver) await cloudSaver.flush();
+  await signOut();
+  location.reload();
 }
 
 async function doBooster() {
@@ -414,7 +459,7 @@ function startGameUI() {
     <nav id="tabs"></nav>
     <main id="view"></main>
     <footer id="footer">
-      <span class="muted">${userInfo ? '👤 ' + userInfo.email : 'Offline-Modus (lokal gespeichert)'}</span>
+      <span class="muted" id="who">${userInfo ? '👤 ' + (userInfo.username || userInfo.email) : 'Offline-Modus (lokal gespeichert)'}</span>
       <span>${userInfo
         ? '<button id="logout-btn" class="ghost">Logout</button>'
         : '<button id="reset-btn" class="ghost">Spielstand zurücksetzen</button>'}</span>
@@ -540,6 +585,9 @@ function onViewClick(ev) {
     return;
   }
 
+  if (btn.id === 'pf-save-name') { doSaveName(); return; }
+  if (btn.id === 'pf-save-planet') { doSavePlanet(); return; }
+  if (btn.id === 'pf-logout') { doLogout(); return; }
   if (btn.id === 'booster-btn') { doBooster(); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }

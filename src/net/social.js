@@ -149,3 +149,18 @@ export async function removeFriend(id) {
   const { error } = await sb.from('friendships').delete().eq('id', id);
   if (error) throw error;
 }
+
+/** Eigenes Profil (Name, Punkte). */
+export async function getProfile(userId) {
+  const sb = await need();
+  const { data, error } = await sb.from('profiles').select('username, points').eq('id', userId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Spielernamen ändern. */
+export async function updateUsername(userId, name) {
+  const sb = await need();
+  const { error } = await sb.from('profiles').update({ username: name.trim() }).eq('id', userId);
+  if (error) throw error;
+}

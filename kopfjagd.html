@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kopfjagd · Triff den Kopf!</title>
+    <style>
+      :root {
+        --bg: #0a0e1a;
+        --bg2: #111a2e;
+        --panel: #16203a;
+        --panel2: #1d2a48;
+        --border: #2a3a5e;
+        --text: #d8e2f2;
+        --muted: #7e8db0;
+        --accent: #4ea1ff;
+        --ok: #3ddc84;
+        --err: #ff6b6b;
+        --gold: #ffd84e;
+      }
+
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        background: radial-gradient(circle at 50% -10%, #1a2848, var(--bg) 60%);
+        color: var(--text);
+        min-height: 100vh;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      .wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+      h1 { font-size: 26px; margin: 8px 0 2px; }
+      .sub { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+
+      /* ---------------------------------------------------- Statusleiste */
+      #stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 14px;
+      }
+      .stat {
+        display: flex;
+        flex-direction: column;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: var(--bg2);
+      }
+      .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+      .stat-val { font-size: 22px; font-weight: 700; }
+      #time.low .stat-val { color: var(--err); }
+
+      /* ---------------------------------------------------- Spielfeld */
+      #field {
+        position: relative;
+        width: 100%;
+        height: min(62vh, 560px);
+        background:
+          radial-gradient(circle at 30% 20%, #1c2c4e, transparent 60%),
+          radial-gradient(circle at 80% 90%, #16284a, transparent 55%),
+          var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        touch-action: manipulation;
+        cursor: crosshair;
+      }
+
+      /* Das Ziel: runder Ausschnitt mit dem Kopf */
+      #target {
+        position: absolute;
+        border-radius: 50%;
+        background-image: url("assets/kopfjagd/kopf.jpg");
+        background-size: cover;
+        background-position: 50% 28%;
+        border: 3px solid var(--accent);
+        box-shadow: 0 0 0 3px rgba(78,161,255,.25), 0 8px 24px rgba(0,0,0,.5);
+        cursor: pointer;
+        display: none;
+        transform: scale(0);
+        animation: pop .12s ease-out forwards;
+      }
+      @keyframes pop { to { transform: scale(1); } }
+      #target.hit { animation: hit .14s ease-in forwards; }
+      @keyframes hit { to { transform: scale(0); opacity: 0; } }
+
+      /* Punkte-Aufploppen beim Treffer */
+      .float {
+        position: absolute;
+        font-weight: 800;
+        font-size: 22px;
+        color: var(--ok);
+        pointer-events: none;
+        animation: rise .7s ease-out forwards;
+        text-shadow: 0 2px 6px rgba(0,0,0,.6);
+      }
+      @keyframes rise {
+        to { transform: translateY(-44px); opacity: 0; }
+      }
+
+      /* Overlay (Start / Ende) */
+      #overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: rgba(10,14,26,.82);
+        backdrop-filter: blur(3px);
+        text-align: center;
+        padding: 20px;
+      }
+      #overlay.hidden { display: none; }
+      #overlay h2 { margin: 0; font-size: 28px; }
+      #overlay p { margin: 0; color: var(--muted); max-width: 460px; }
+
+      .btn {
+        background: var(--accent);
+        border: none;
+        color: #04122a;
+        font-weight: 700;
+        font-size: 16px;
+        padding: 12px 26px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: transform .1s, filter .15s;
+      }
+      .btn:hover { filter: brightness(1.08); }
+      .btn:active { transform: scale(.96); }
+      .btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+
+      .nameRow { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+      input[type="text"] {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 11px 14px;
+        border-radius: 10px;
+        font-size: 16px;
+        width: 220px;
+        outline: none;
+      }
+      input[type="text"]:focus { border-color: var(--accent); }
+
+      .preview {
+        width: 84px; height: 84px; border-radius: 50%;
+        background-image: url("assets/kopfjagd/kopf.jpg");
+        background-size: cover; background-position: 50% 28%;
+        border: 3px solid var(--accent);
+        box-shadow: 0 0 0 3px rgba(78,161,255,.25);
+      }
+
+      /* ---------------------------------------------------- Rangliste */
+      #board {
+        margin-top: 18px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      #board h3 { margin: 0 0 10px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .5px; }
+      tr:last-child td { border-bottom: none; }
+      td.rank { width: 42px; font-weight: 700; color: var(--muted); }
+      td.score { text-align: right; font-weight: 700; color: var(--accent); }
+      tr.you td { color: var(--gold); }
+      tr.you td.score { color: var(--gold); }
+      .medal { font-size: 16px; }
+      .empty { color: var(--muted); padding: 10px 6px; }
+      .clear {
+        margin-top: 10px; background: none; border: 1px solid var(--border);
+        color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+      }
+      .clear:hover { color: var(--err); border-color: var(--err); }
+
+      .foot { color: var(--muted); font-size: 12px; margin-top: 18px; text-align: center; }
+      .foot a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>🎯 Kopfjagd</h1>
+      <p class="sub">Triff den Kopf so oft wie möglich! Er springt nach jedem Treffer woanders hin. Du hast <strong>67 Sekunden</strong>.</p>
+
+      <div id="stats">
+        <div class="stat" id="time">
+          <span class="stat-label">Zeit</span>
+          <span class="stat-val" id="timeVal">67</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Treffer</span>
+          <span class="stat-val" id="scoreVal">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Genauigkeit</span>
+          <span class="stat-val" id="accVal">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Rekord</span>
+          <span class="stat-val" id="bestVal">0</span>
+        </div>
+      </div>
+
+      <div id="field">
+        <div id="target"></div>
+
+        <div id="overlay">
+          <div class="preview"></div>
+          <h2 id="ovTitle">Bereit?</h2>
+          <p id="ovText">Klicke bzw. tippe den Kopf so schnell du kannst. 67 Sekunden lang. Viel Glück!</p>
+          <div id="ovActions">
+            <button class="btn" id="startBtn">Spiel starten</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="board">
+        <h3>🏆 Rangliste</h3>
+        <table>
+          <thead>
+            <tr><th class="rank">#</th><th>Name</th><th>Genauigkeit</th><th>Datum</th><th class="score">Treffer</th></tr>
+          </thead>
+          <tbody id="boardBody"></tbody>
+        </table>
+        <button class="clear" id="clearBtn">Rangliste löschen</button>
+      </div>
+
+      <p class="foot">Teil von <a href="index.html">Oggame</a> · Bestenliste wird lokal im Browser gespeichert.</p>
+    </div>
+
+    <script>
+      const GAME_TIME = 67;
+      const LS_KEY = "kopfjagd.leaderboard.v1";
+
+      const field    = document.getElementById("field");
+      const target   = document.getElementById("target");
+      const overlay  = document.getElementById("overlay");
+      const ovTitle  = document.getElementById("ovTitle");
+      const ovText   = document.getElementById("ovText");
+      const ovActions= document.getElementById("ovActions");
+      const timeBox  = document.getElementById("time");
+      const timeVal  = document.getElementById("timeVal");
+      const scoreVal = document.getElementById("scoreVal");
+      const accVal   = document.getElementById("accVal");
+      const bestVal  = document.getElementById("bestVal");
+      const boardBody= document.getElementById("boardBody");
+
+      let timeLeft = GAME_TIME;
+      let score = 0;
+      let hits = 0;
+      let misses = 0;
+      let running = false;
+      let timerId = null;
+
+      // ---------------------------------------------------- Rangliste (localStorage)
+      function loadBoard() {
+        try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; }
+        catch { return []; }
+      }
+      function saveBoard(list) {
+        localStorage.setItem(LS_KEY, JSON.stringify(list));
+      }
+      function bestScore() {
+        const b = loadBoard();
+        return b.length ? Math.max(...b.map(e => e.score)) : 0;
+      }
+      function renderBoard(highlightId) {
+        const list = loadBoard().sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 10);
+        bestVal.textContent = bestScore();
+        if (!list.length) {
+          boardBody.innerHTML = '<tr><td class="empty" colspan="5">Noch keine Einträge – sei der Erste!</td></tr>';
+          return;
+        }
+        const medals = ["🥇", "🥈", "🥉"];
+        boardBody.innerHTML = list.map((e, i) => {
+          const rank = medals[i] ? `<span class="medal">${medals[i]}</span>` : (i + 1);
+          const date = new Date(e.time).toLocaleDateString("de-DE");
+          const you = e.id === highlightId ? " class=\"you\"" : "";
+          return `<tr${you}><td class="rank">${rank}</td><td>${escapeHtml(e.name)}</td><td>${e.acc != null ? e.acc + "%" : "–"}</td><td>${date}</td><td class="score">${e.score}</td></tr>`;
+        }).join("");
+      }
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      }
+
+      // ---------------------------------------------------- Spiel-Logik
+      function randomTargetSize() {
+        // Etwas Abwechslung: zwischen 56 und 92 px
+        return 56 + Math.floor(Math.random() * 37);
+      }
+      function spawnTarget() {
+        const size = randomTargetSize();
+        const maxX = field.clientWidth - size;
+        const maxY = field.clientHeight - size;
+        const x = Math.floor(Math.random() * Math.max(0, maxX));
+        const y = Math.floor(Math.random() * Math.max(0, maxY));
+        target.style.width = size + "px";
+        target.style.height = size + "px";
+        target.style.left = x + "px";
+        target.style.top = y + "px";
+        target.style.display = "block";
+        target.classList.remove("hit");
+        // Animation neu auslösen
+        target.style.animation = "none";
+        void target.offsetWidth;
+        target.style.animation = "";
+      }
+
+      function floatPoints(x, y) {
+        const f = document.createElement("div");
+        f.className = "float";
+        f.textContent = "+1";
+        f.style.left = x + "px";
+        f.style.top = y + "px";
+        field.appendChild(f);
+        setTimeout(() => f.remove(), 700);
+      }
+
+      function updateAccuracy() {
+        const total = hits + misses;
+        accVal.textContent = total ? Math.round((hits / total) * 100) + "%" : "–";
+      }
+
+      target.addEventListener("pointerdown", (ev) => {
+        if (!running) return;
+        ev.stopPropagation();
+        hits++;
+        score++;
+        scoreVal.textContent = score;
+        floatPoints(parseFloat(target.style.left) + 10, parseFloat(target.style.top));
+        updateAccuracy();
+        spawnTarget();
+      });
+
+      // Klick ins Leere = Fehlversuch
+      field.addEventListener("pointerdown", (ev) => {
+        if (!running || ev.target === target) return;
+        misses++;
+        updateAccuracy();
+      });
+
+      function tick() {
+        timeLeft--;
+        timeVal.textContent = timeLeft;
+        if (timeLeft <= 10) timeBox.classList.add("low");
+        if (timeLeft <= 0) endGame();
+      }
+
+      function startGame() {
+        timeLeft = GAME_TIME;
+        score = 0; hits = 0; misses = 0;
+        running = true;
+        timeVal.textContent = timeLeft;
+        scoreVal.textContent = "0";
+        accVal.textContent = "–";
+        timeBox.classList.remove("low");
+        overlay.classList.add("hidden");
+        spawnTarget();
+        clearInterval(timerId);
+        timerId = setInterval(tick, 1000);
+      }
+
+      function endGame() {
+        running = false;
+        clearInterval(timerId);
+        target.style.display = "none";
+        showResult();
+      }
+
+      function showResult() {
+        const total = hits + misses;
+        const acc = total ? Math.round((hits / total) * 100) : null;
+        overlay.classList.remove("hidden");
+        ovTitle.textContent = "Zeit abgelaufen!";
+        ovText.innerHTML = `Du hast <strong>${score}</strong> Treffer geschafft` +
+          (acc != null ? ` (Genauigkeit ${acc}%).` : ".") + " Trag dich in die Rangliste ein:";
+        ovActions.innerHTML = `
+          <div class="nameRow">
+            <input type="text" id="nameInput" maxlength="18" placeholder="Dein Name" />
+            <button class="btn" id="saveBtn">Speichern</button>
+          </div>
+          <button class="btn ghost" id="skipBtn">Ohne Speichern nochmal</button>
+        `;
+        const nameInput = document.getElementById("nameInput");
+        nameInput.value = localStorage.getItem("kopfjagd.lastName") || "";
+        nameInput.focus();
+        nameInput.select();
+
+        function save() {
+          const name = (nameInput.value || "").trim() || "Anonym";
+          localStorage.setItem("kopfjagd.lastName", name);
+          const entry = { id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), name, score, acc, time: Date.now() };
+          const list = loadBoard();
+          list.push(entry);
+          saveBoard(list);
+          renderBoard(entry.id);
+          backToStart(`Gespeichert! Du bist ${rankOf(entry.id)}.`);
+        }
+        document.getElementById("saveBtn").addEventListener("click", save);
+        nameInput.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+        document.getElementById("skipBtn").addEventListener("click", () => backToStart());
+      }
+
+      function rankOf(id) {
+        const sorted = loadBoard().sort((a, b) => b.score - a.score || a.time - b.time);
+        const idx = sorted.findIndex(e => e.id === id);
+        return idx >= 0 ? `auf Platz ${idx + 1}` : "in der Liste";
+      }
+
+      function backToStart(msg) {
+        ovTitle.textContent = "Nochmal?";
+        ovText.textContent = msg || "Schaffst du mehr Treffer?";
+        ovActions.innerHTML = '<button class="btn" id="startBtn2">Neue Runde</button>';
+        document.getElementById("startBtn2").addEventListener("click", startGame);
+      }
+
+      // ---------------------------------------------------- Init
+      document.getElementById("startBtn").addEventListener("click", startGame);
+      document.getElementById("clearBtn").addEventListener("click", () => {
+        if (confirm("Wirklich die gesamte Rangliste löschen?")) {
+          saveBoard([]);
+          renderBoard();
+        }
+      });
+      // Kontextmenü auf dem Spielfeld unterdrücken (langes Tippen mobil)
+      field.addEventListener("contextmenu", e => e.preventDefault());
+
+      renderBoard();
+    </script>
+  </body>
+</html>

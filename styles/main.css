@@ -465,3 +465,8 @@ button.build-btn { background: linear-gradient(180deg, #2aa8ff, #0d7fd6); color:
 
 .c-gold { color: #ffd24a; }
 .c-titan { color: #b8c2cc; }
+
+/* Allianz-Chat */
+.chat-box { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px; }
+.chat-msg { background: var(--bg2); border: 1px solid var(--border); padding: 8px 10px; font-size: 13px; }
+.chat-name { color: var(--neon); font-weight: 700; }

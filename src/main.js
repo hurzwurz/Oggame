@@ -152,7 +152,9 @@ async function refreshAlliance() {
     const membership = await Social.myMembership(userInfo.id);
     const members = membership ? await Social.allianceMembers(membership.alliance_id) : [];
     const alliances = membership ? [] : await Social.listAlliances();
-    allianceData = { online: true, membership, members, alliances };
+    const ranking = await Social.allianceRanking().catch(() => []);
+    const messages = membership ? await Social.allianceMessages(membership.alliance_id).catch(() => []) : [];
+    allianceData = { online: true, membership, members, alliances, ranking, messages };
   } catch (e) {
     allianceData = { online: true, error: friendlyError(e) };
   }
@@ -418,6 +420,14 @@ async function doSocial(btn) {
       await Social.removeFriend(btn.dataset.id);
       toast('Freund entfernt.', true);
       await refreshFriends();
+    } else if (btn.id === 'al-send') {
+      const input = viewEl.querySelector('#al-msg');
+      const body = ((input && input.value) || '').trim();
+      if (!body) return;
+      await Social.sendAllianceMessage(allianceData.membership.alliance_id, userInfo.id, userInfo.username || 'Spieler', body);
+      await refreshAlliance();
+    } else if (btn.id === 'al-chat-refresh') {
+      await refreshAlliance();
     }
   } catch (e) {
     toast(friendlyError(e), false);
@@ -668,7 +678,8 @@ function onViewClick(ev) {
   if (
     btn.id === 'create-alliance' || btn.id === 'leave-alliance' || btn.id === 'add-friend' ||
     btn.classList.contains('join-alliance') || btn.classList.contains('friend-accept') ||
-    btn.classList.contains('friend-decline') || btn.classList.contains('friend-remove')
+    btn.classList.contains('friend-decline') || btn.classList.contains('friend-remove') ||
+    btn.id === 'al-send' || btn.id === 'al-chat-refresh'
   ) {
     doSocial(btn);
     return;

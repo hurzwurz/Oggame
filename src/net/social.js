@@ -164,3 +164,32 @@ export async function updateUsername(userId, name) {
   const { error } = await sb.from('profiles').update({ username: name.trim() }).eq('id', userId);
   if (error) throw error;
 }
+
+// ------------------------------------------------------------ Allianz-Chat & Rangliste
+
+export async function allianceMessages(allianceId) {
+  const sb = await need();
+  const { data, error } = await sb
+    .from('alliance_messages')
+    .select('id, sender_name, body, created_at')
+    .eq('alliance_id', allianceId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return (data || []).reverse();
+}
+
+export async function sendAllianceMessage(allianceId, senderId, senderName, body) {
+  const sb = await need();
+  const { error } = await sb
+    .from('alliance_messages')
+    .insert({ alliance_id: allianceId, sender: senderId, sender_name: senderName, body });
+  if (error) throw error;
+}
+
+export async function allianceRanking() {
+  const sb = await need();
+  const { data, error } = await sb.from('alliance_ranking').select('*').limit(50);
+  if (error) throw error;
+  return data || [];
+}

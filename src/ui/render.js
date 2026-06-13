@@ -685,6 +685,18 @@ export function renderBase(game) {
 
 // ------------------------------------------------------------------ Allianz
 
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function allianceRankingPanel(state) {
+  const rows = (state.ranking || []).length
+    ? state.ranking.map((a, i) => `<tr><td>${i + 1}</td><td>[${esc(a.tag)}] ${esc(a.name)}</td><td>${a.members}</td><td>${fmt(a.points)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="muted">—</td></tr>';
+  return `<div class="panel"><h3>🏆 Allianz-Rangliste</h3>
+    <table class="queue"><thead><tr><th>#</th><th>Allianz</th><th>Mitgl.</th><th>Punkte</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 export function renderAlliance(state) {
   if (!state.online) return `<div class="panel"><p class="muted">Allianzen gibt es nur im Online-Modus (eingeloggt).</p></div>`;
   if (state.error) return `<div class="panel"><div class="login-error">${state.error}</div></div>`;
@@ -695,20 +707,32 @@ export function renderAlliance(state) {
     const rows = (state.members || [])
       .map((m) => {
         const p = m.profiles || {};
-        return `<tr><td>${p.username || '?'}</td><td>${m.role === 'founder' ? '👑 Gründer' : 'Mitglied'}</td><td>${fmt(p.points || 0)}</td></tr>`;
+        return `<tr><td>${esc(p.username) || '?'}</td><td>${m.role === 'founder' ? '👑 Gründer' : 'Mitglied'}</td><td>${fmt(p.points || 0)}</td></tr>`;
       })
       .join('');
+    const msgs = (state.messages || []).length
+      ? state.messages.map((m) => `<div class="chat-msg"><span class="chat-name">${esc(m.sender_name)}</span> <span class="muted small">${new Date(m.created_at).toLocaleTimeString('de-DE')}</span><div>${esc(m.body)}</div></div>`).join('')
+      : '<p class="muted">Noch keine Nachrichten.</p>';
     return `<div class="panel">
-      <h2>[${a.tag}] ${a.name}</h2>
-      <p class="muted">${(state.members || []).length} Mitglied(er)</p>
-      <table class="queue"><thead><tr><th>Spieler</th><th>Rolle</th><th>Punkte</th></tr></thead><tbody>${rows}</tbody></table>
-      <button id="leave-alliance" class="ghost" data-id="${state.membership.alliance_id}" style="margin-top:12px">Allianz verlassen</button>
-    </div>`;
+        <h2>[${esc(a.tag)}] ${esc(a.name)}</h2>
+        <p class="muted">${(state.members || []).length} Mitglied(er)</p>
+        <table class="queue"><thead><tr><th>Spieler</th><th>Rolle</th><th>Punkte</th></tr></thead><tbody>${rows}</tbody></table>
+        <button id="leave-alliance" class="ghost" data-id="${state.membership.alliance_id}" style="margin-top:12px">Allianz verlassen</button>
+      </div>
+      <div class="panel">
+        <h3>💬 Allianz-Chat <button id="al-chat-refresh" class="ghost" style="float:right">Aktualisieren</button></h3>
+        <div class="chat-box">${msgs}</div>
+        <div class="dispatch-row" style="margin-top:10px">
+          <input id="al-msg" maxlength="500" placeholder="Nachricht an die Allianz…" style="flex:1;min-width:160px" />
+          <button id="al-send" class="build-btn">Senden</button>
+        </div>
+      </div>
+      ${allianceRankingPanel(state)}`;
   }
 
   const list = (state.alliances || []).length
     ? `<table class="queue"><thead><tr><th>Tag</th><th>Name</th><th></th></tr></thead><tbody>${state.alliances
-        .map((a) => `<tr><td>[${a.tag}]</td><td>${a.name}</td><td><button class="join-alliance build-btn" data-id="${a.id}">Beitreten</button></td></tr>`)
+        .map((a) => `<tr><td>[${esc(a.tag)}]</td><td>${esc(a.name)}</td><td><button class="join-alliance build-btn" data-id="${a.id}">Beitreten</button></td></tr>`)
         .join('')}</tbody></table>`
     : `<p class="muted">Noch keine Allianzen – gründe die erste!</p>`;
 
@@ -721,7 +745,8 @@ export function renderAlliance(state) {
         <button id="create-alliance" class="build-btn" style="align-self:end">Gründen</button>
       </div>
     </div>
-    <div class="panel"><h3>Allianzen beitreten</h3>${list}</div>`;
+    <div class="panel"><h3>Allianzen beitreten</h3>${list}</div>
+    ${allianceRankingPanel(state)}`;
 }
 
 // ------------------------------------------------------------------ Freunde

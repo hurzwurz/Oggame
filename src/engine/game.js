@@ -35,9 +35,11 @@ function defaultState() {
 }
 
 export class Game {
-  constructor() {
-    const saved = loadGame();
-    this.state = saved ? this._migrate(saved) : defaultState();
+  constructor(options = {}) {
+    // Speicher-Callback: online -> Cloud, sonst localStorage.
+    this._onSave = options.onSave || ((state) => saveGame(state));
+    const source = options.initialState || loadGame();
+    this.state = source ? this._migrate(source) : defaultState();
     // Offline-Fortschritt nachholen
     this.tick();
   }
@@ -62,7 +64,7 @@ export class Game {
   }
 
   save() {
-    saveGame(this.state);
+    this._onSave(this.state);
   }
 
   // ----------------------------------------------------------------- Abfragen

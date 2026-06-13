@@ -265,7 +265,7 @@ const MISSION_LABELS = { attack: 'Angriff', espionage: 'Spionage', expedition: '
 
 // ----------------------------------------------------------------- Galaxie
 
-export function renderGalaxy(game, dispatch) {
+export function renderGalaxy(game, dispatch, players = []) {
   const coords = [dispatch.g, dispatch.s, dispatch.p];
   const ownedShips = Object.entries(game.state.ships).filter(([, n]) => n > 0);
 
@@ -326,7 +326,51 @@ export function renderGalaxy(game, dispatch) {
     list += `</tbody></table>`;
   }
 
-  return form + `<div class="panel">${list}</div>`;
+  let roster = '';
+  if (players && players.length) {
+    const rows = players
+      .map(
+        (p) => `<tr>
+          <td>[${p.galaxy}:${p.system}:${p.position}]</td>
+          <td>${p.name}</td>
+          <td>${p.owner_name}${p.is_self ? ' <span class="win">(du)</span>' : ''}</td>
+          <td>${fmt(p.points || 0)}</td>
+        </tr>`
+      )
+      .join('');
+    roster = `<div class="panel">
+      <h3>Spieler in der Galaxie <span class="muted small">(${players.length})</span></h3>
+      <table class="queue"><thead><tr><th>Koord.</th><th>Planet</th><th>Spieler</th><th>Punkte</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <p class="muted small">PvP-Angriffe auf echte Spieler folgen in Phase 3 – aktuell greifst du die NPC-Ziele unten an.</p>
+    </div>`;
+  }
+
+  return form + roster + `<div class="panel">${list}</div>`;
+}
+
+// ------------------------------------------------------------------ Login
+
+export function renderLogin(state) {
+  const { mode = 'login', error = '', busy = false } = state;
+  const isSignup = mode === 'signup';
+  return `<div class="login-wrap">
+    <div class="panel login-card">
+      <h2>🚀 Oggame</h2>
+      <p class="muted">${isSignup ? 'Neues Imperium gründen' : 'Willkommen zurück, Kommandant.'}</p>
+      ${error ? `<div class="login-error">${error}</div>` : ''}
+      <form id="auth-form">
+        ${isSignup ? `<label>Spielername<input type="text" id="auth-username" autocomplete="username" required /></label>` : ''}
+        <label>E-Mail<input type="email" id="auth-email" autocomplete="email" required /></label>
+        <label>Passwort<input type="password" id="auth-password" autocomplete="${isSignup ? 'new-password' : 'current-password'}" minlength="6" required /></label>
+        <button type="submit" class="build-btn" ${busy ? 'disabled' : ''}>${busy ? 'Bitte warten…' : isSignup ? 'Registrieren' : 'Einloggen'}</button>
+      </form>
+      <p class="muted small toggle-line">
+        ${isSignup ? 'Schon ein Konto?' : 'Noch kein Konto?'}
+        <a href="#" id="auth-toggle">${isSignup ? 'Einloggen' : 'Registrieren'}</a>
+      </p>
+    </div>
+  </div>`;
 }
 
 /** Live-Schätzung für Distanz / Flugzeit / Treibstoff (im Dispatch-Formular). */

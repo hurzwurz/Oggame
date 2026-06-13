@@ -5,7 +5,7 @@
 // Flotten/Berichte bleiben vorerst lokal (sie werden in Phase 3 server-
 // autoritativ); die NPC-Galaxie wird deterministisch neu erzeugt.
 
-import { supabase, savePlanet } from './supabase.js';
+import { getClient } from './supabase.js';
 
 const STARTING = { metal: 500, crystal: 500, deuterium: 100 };
 const EMPTY_QUEUES = { building: null, research: null, shipyard: [] };
@@ -16,6 +16,7 @@ const secondaryKey = (uid) => `oggame.secondary.${uid}`;
  * Wählt bei Namenskollision automatisch einen freien Namen.
  */
 export async function ensureProfile(user) {
+  const supabase = await getClient();
   const { data: existing, error: selErr } = await supabase
     .from('profiles')
     .select('id')
@@ -43,6 +44,7 @@ export async function ensureProfile(user) {
 
 /** Lädt den Heimatplaneten oder legt einen neuen an freien Koordinaten an. */
 export async function ensureHomePlanet(userId) {
+  const supabase = await getClient();
   const { data: existing, error: loadErr } = await supabase
     .from('planets')
     .select('*')
@@ -134,16 +136,22 @@ export function makeCloudSaver(planetId, userId) {
       /* localStorage optional */
     }
     try {
-      await savePlanet(planetId, {
-        name: s.planetName,
-        resources: s.resources,
-        buildings: s.buildings,
-        research: s.research,
-        ships: s.ships,
-        defenses: s.defenses,
-        queues: s.queues,
-        last_update: new Date(s.lastTick).toISOString(),
-      });
+      const supabase = await getClient();
+      if (!supabase) { dirty = true; return; }
+      const { error } = await supabase
+        .from('planets')
+        .update({
+          name: s.planetName,
+          resources: s.resources,
+          buildings: s.buildings,
+          research: s.research,
+          ships: s.ships,
+          defenses: s.defenses,
+          queues: s.queues,
+          last_update: new Date(s.lastTick).toISOString(),
+        })
+        .eq('id', planetId);
+      if (error) throw error;
     } catch (e) {
       console.warn('Cloud-Speichern fehlgeschlagen:', e.message || e);
       dirty = true; // beim nächsten Mal erneut versuchen

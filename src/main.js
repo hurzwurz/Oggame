@@ -4,7 +4,7 @@ import { Game } from './engine/game.js';
 import { clearGame } from './engine/storage.js';
 import { simulateBattle } from './engine/combat.js';
 import * as V from './ui/render.js';
-import { isConfigured, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview } from './net/supabase.js';
+import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview } from './net/supabase.js';
 import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
 
 // ------------------------------------------------------------- globaler Zustand
@@ -41,13 +41,11 @@ let topbarEl, tabsEl, viewEl;
 // =================================================================== Bootstrap
 
 async function boot() {
-  if (!isConfigured()) {
-    // Offline-Modus: lokaler Spielstand wie gehabt.
-    game = new Game();
-    userInfo = null;
-    startGameUI();
-    return;
-  }
+  // Offline-Modus, wenn keine Keys hinterlegt sind.
+  if (!isConfigured()) return startOffline();
+  // Lässt sich die Supabase-Bibliothek nicht laden (Netz/Blocker) -> offline.
+  const sb = await getClient();
+  if (!sb) return startOffline('Online-Modus nicht erreichbar – du spielst lokal weiter.');
   try {
     const user = await currentUser();
     if (!user) {
@@ -58,6 +56,14 @@ async function boot() {
   } catch (e) {
     renderErrorScreen(e);
   }
+}
+
+/** Lokaler Modus mit localStorage (immer verfügbar – kein Crash möglich). */
+function startOffline(notice) {
+  game = new Game();
+  userInfo = null;
+  startGameUI();
+  if (notice) setTimeout(() => toast(notice, false), 300);
 }
 
 async function startOnline(user) {
@@ -127,9 +133,12 @@ function renderErrorScreen(e) {
   app.innerHTML = `<div class="login-wrap"><div class="panel login-card">
     <h2>⚠️ Verbindungsproblem</h2>
     <div class="login-error">${friendlyError(e)}</div>
-    <button class="build-btn" onclick="location.reload()">Erneut versuchen</button>
+    <button id="err-retry" class="build-btn">Erneut versuchen</button>
+    <button id="err-offline" class="ghost" style="margin-top:8px">Offline weiterspielen</button>
     <p class="muted small">Tipp: Stelle sicher, dass <code>supabase/schema.sql</code> im SQL-Editor ausgeführt wurde und der Email-Login aktiv ist.</p>
   </div></div>`;
+  document.getElementById('err-retry').addEventListener('click', () => location.reload());
+  document.getElementById('err-offline').addEventListener('click', () => startOffline());
 }
 
 function friendlyError(e) {

@@ -7,6 +7,7 @@ import * as V from './ui/render.js';
 import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview, resetPassword, updatePassword, onPasswordRecovery } from './net/supabase.js';
 import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
 import * as Social from './net/social.js';
+import * as Pvp from './net/pvp.js';
 
 // ------------------------------------------------------------- globaler Zustand
 let game = null;
@@ -125,6 +126,37 @@ async function refreshFriends() {
     friendData = { online: true, error: friendlyError(e) };
   }
   if (activeTab === 'friends') renderView();
+}
+
+async function doPvpAttack(coords, ships) {
+  if (!Object.keys(ships).length) return toast('Keine Schiffe ausgewählt.', false);
+  for (const [id, n] of Object.entries(ships)) {
+    if ((game.state.ships[id] || 0) < n) return toast(`Nicht genug ${game.nameOf(id)}.`, false);
+  }
+  toast('Angriff läuft …', true);
+  try {
+    const res = await Pvp.attackPlayer(coords, ships);
+    // Lokalen Zustand mit dem Server-Ergebnis abgleichen
+    if (res.attacker_ships) game.state.ships = res.attacker_ships;
+    if (res.attacker_resources) {
+      const r = res.attacker_resources;
+      game.state.resources.metal = Number(r.metal) || 0;
+      game.state.resources.crystal = Number(r.crystal) || 0;
+      game.state.resources.deuterium = Number(r.deuterium) || 0;
+    }
+    game.state.reports.unshift({
+      id: game.state.fleetSeq++, time: Date.now(), type: 'pvp_attack',
+      target: coords, winner: res.winner, loot: res.loot || {},
+    });
+    game.save();
+    const msg = res.winner === 'attacker' ? 'Sieg! Beute eingefahren.' : res.winner === 'defender' ? 'Niederlage – Flotte dezimiert.' : 'Unentschieden.';
+    toast(`PvP: ${msg}`, res.winner === 'attacker');
+    activeTab = 'reports';
+    renderTabs();
+    renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
 }
 
 async function doSocial(btn) {
@@ -420,6 +452,14 @@ function onViewClick(ev) {
     return;
   }
 
+  // Echten Spieler ins Angriffs-Formular übernehmen
+  if (btn.classList.contains('attack-player')) {
+    dispatch.g = +btn.dataset.g; dispatch.s = +btn.dataset.s; dispatch.p = +btn.dataset.p; dispatch.mission = 'attack';
+    renderView();
+    toast('Ziel gesetzt – Schiffe wählen und „Flotte starten".', true);
+    return;
+  }
+
   if (btn.id === 'send-fleet') {
     const coords = [num('#d-g', 1), num('#d-s', 1), num('#d-p', 1)];
     const mission = viewEl.querySelector('#d-mission').value;
@@ -430,6 +470,10 @@ function onViewClick(ev) {
       if (n > 0) ships[el.dataset.id] = n;
     });
     const cargo = { metal: num('#c-metal', 0), crystal: num('#c-crystal', 0), deuterium: num('#c-deut', 0) };
+    // Ist das Ziel ein echter Spieler? -> server-seitiger PvP-Angriff
+    const isPlayer = userInfo && mission === 'attack' &&
+      players.some((p) => !p.is_self && p.galaxy === coords[0] && p.system === coords[1] && p.position === coords[2]);
+    if (isPlayer) { doPvpAttack(coords, ships); return; }
     const res = game.sendFleet(mission, coords, ships, cargo);
     if (res.ok) { toast('Flotte gestartet.', true); activeTab = 'movement'; renderTabs(); }
     else toast(res.error || 'Start nicht möglich.', false);

@@ -342,14 +342,15 @@ export function renderGalaxy(game, dispatch, players = []) {
           <td>${p.name}</td>
           <td>${p.owner_name}${p.is_self ? ' <span class="win">(du)</span>' : ''}</td>
           <td>${fmt(p.points || 0)}</td>
+          <td>${p.is_self ? '' : `<button class="attack-player" data-g="${p.galaxy}" data-s="${p.system}" data-p="${p.position}">⚔️ Angreifen</button>`}</td>
         </tr>`
       )
       .join('');
     roster = `<div class="panel">
       <h3>Spieler in der Galaxie <span class="muted small">(${players.length})</span></h3>
-      <table class="queue"><thead><tr><th>Koord.</th><th>Planet</th><th>Spieler</th><th>Punkte</th></tr></thead>
+      <table class="queue"><thead><tr><th>Koord.</th><th>Planet</th><th>Spieler</th><th>Punkte</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>
-      <p class="muted small">PvP-Angriffe auf echte Spieler folgen in Phase 3 – aktuell greifst du die NPC-Ziele unten an.</p>
+      <p class="muted small">„Angreifen" setzt das Ziel im Formular oben – Schiffe wählen und „Flotte starten". Der Kampf wird serverseitig ausgetragen.</p>
     </div>`;
   }
 
@@ -445,6 +446,18 @@ export function renderReports(game) {
 
 function reportCard(r) {
   const t = new Date(r.time).toLocaleTimeString('de-DE');
+  if (r.type === 'pvp_attack') {
+    const v = r.winner === 'attacker' ? '<b class="win">Sieg!</b>' : r.winner === 'defender' ? '<b class="lose">Niederlage</b>' : '<b>Unentschieden</b>';
+    const loot = (r.loot && (r.loot.metal || r.loot.crystal || r.loot.deuterium))
+      ? `Beute: ${costLine(r.loot)}` : 'Keine Beute';
+    return card(`⚔️ Angriff auf Spieler ${coordFmt(r.target)}`, t, `${v}<br>${loot}`);
+  }
+  if (r.type === 'pvp_defense') {
+    const v = r.winner === 'defender' ? '<b class="win">Verteidigt!</b>' : r.winner === 'attacker' ? '<b class="lose">Geplündert!</b>' : '<b>Unentschieden</b>';
+    const loot = (r.loot && (r.loot.metal || r.loot.crystal || r.loot.deuterium))
+      ? `Verlust: ${costLine(r.loot)}` : 'Kein Verlust';
+    return card(`🛡️ Angriff von ${coordFmt(r.from || [0, 0, 0])}`, t, `${v}<br>${loot}`);
+  }
   if (r.type === 'attack') {
     if (r.empty) return card('Angriff', t, `Ziel ${coordFmt(r.target)} war leer – keine Beute.`);
     const verdict =

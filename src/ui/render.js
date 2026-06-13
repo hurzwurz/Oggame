@@ -6,6 +6,7 @@ import { SHIPS, SHIP_MAP, SHIP_CLASSES } from '../data/ships.js';
 import { DEFENSES, DEFENSE_MAP } from '../data/defenses.js';
 import * as F from '../engine/formulas.js';
 import * as G from '../data/galaxy.js';
+import { getIcon } from '../data/icons.js';
 
 // ------------------------------------------------------------------ Formatierung
 
@@ -50,20 +51,20 @@ export function renderTopbar(game) {
   const cap = game.capacities();
   const prod = game.production();
   const e = game.energy();
-  const cell = (label, val, capVal, perH, cls) => {
+  const cell = (icon, label, val, capVal, perH, cls) => {
     const full = capVal && val >= capVal;
     return `<div class="res ${cls}${full ? ' full' : ''}">
-      <span class="res-label">${label}</span>
+      <span class="res-label">${icon} ${label}</span>
       <span class="res-val">${fmt(val)}${capVal ? ` / ${fmt(capVal)}` : ''}</span>
       <span class="res-rate">${perH >= 0 ? '+' : ''}${fmt(perH)}/h</span>
     </div>`;
   };
   return (
-    cell('Metall', r.metal, cap.metal, prod.metal, 'c-metal') +
-    cell('Kristall', r.crystal, cap.crystal, prod.crystal, 'c-crystal') +
-    cell('Deuterium', r.deuterium, cap.deuterium, prod.deuterium, 'c-deut') +
+    cell(getIcon('metal'), 'Metall', r.metal, cap.metal, prod.metal, 'c-metal') +
+    cell(getIcon('crystal'), 'Kristall', r.crystal, cap.crystal, prod.crystal, 'c-crystal') +
+    cell(getIcon('deuterium'), 'Deuterium', r.deuterium, cap.deuterium, prod.deuterium, 'c-deut') +
     `<div class="res c-energy${e.ratio < 1 ? ' full' : ''}">
-      <span class="res-label">Energie</span>
+      <span class="res-label">${getIcon('energy')} Energie</span>
       <span class="res-val">${fmt(e.produced - e.consumed)}</span>
       <span class="res-rate">${fmt(e.produced)} / ${fmt(e.consumed)}</span>
     </div>`
@@ -145,7 +146,7 @@ function levelCard(def, level, game, kind) {
   return `
     <div class="card ${disabled ? 'locked' : ''}">
       <div class="card-head">
-        <h4>${def.name}</h4>
+        <h4><span class="card-icon">${getIcon(def.id, kind)}</span> ${def.name}</h4>
         <span class="level">Stufe ${level}</span>
       </div>
       <p class="desc">${def.desc}</p>
@@ -189,7 +190,7 @@ function unitCard(def, owned, game, kind) {
   return `
     <div class="card ${disabled ? 'locked' : ''}">
       <div class="card-head">
-        <h4>${def.name}</h4>
+        <h4><span class="card-icon">${getIcon(def.id, def.class || kind)}</span> ${def.name}</h4>
         <span class="level">Anzahl: ${fmt(owned)}</span>
       </div>
       <p class="desc">${def.desc}</p>
@@ -352,23 +353,42 @@ export function renderGalaxy(game, dispatch, players = []) {
 // ------------------------------------------------------------------ Login
 
 export function renderLogin(state) {
-  const { mode = 'login', error = '', busy = false } = state;
+  const { mode = 'login', error = '', info = '', busy = false } = state;
   const isSignup = mode === 'signup';
   return `<div class="login-wrap">
     <div class="panel login-card">
       <h2>🚀 Oggame</h2>
       <p class="muted">${isSignup ? 'Neues Imperium gründen' : 'Willkommen zurück, Kommandant.'}</p>
       ${error ? `<div class="login-error">${error}</div>` : ''}
+      ${info ? `<div class="login-info">${info}</div>` : ''}
       <form id="auth-form">
         ${isSignup ? `<label>Spielername<input type="text" id="auth-username" autocomplete="username" required /></label>` : ''}
         <label>E-Mail<input type="email" id="auth-email" autocomplete="email" required /></label>
         <label>Passwort<input type="password" id="auth-password" autocomplete="${isSignup ? 'new-password' : 'current-password'}" minlength="6" required /></label>
         <button type="submit" class="build-btn" ${busy ? 'disabled' : ''}>${busy ? 'Bitte warten…' : isSignup ? 'Registrieren' : 'Einloggen'}</button>
       </form>
+      ${isSignup ? '' : '<p class="muted small"><a href="#" id="auth-forgot">Passwort vergessen?</a></p>'}
       <p class="muted small toggle-line">
         ${isSignup ? 'Schon ein Konto?' : 'Noch kein Konto?'}
         <a href="#" id="auth-toggle">${isSignup ? 'Einloggen' : 'Registrieren'}</a>
       </p>
+    </div>
+  </div>`;
+}
+
+/** Screen zum Setzen eines neuen Passworts (nach Klick auf den Recovery-Link). */
+export function renderReset(state = {}) {
+  const { error = '', info = '', busy = false } = state;
+  return `<div class="login-wrap">
+    <div class="panel login-card">
+      <h2>🔑 Neues Passwort</h2>
+      <p class="muted">Lege ein neues Passwort für dein Konto fest.</p>
+      ${error ? `<div class="login-error">${error}</div>` : ''}
+      ${info ? `<div class="login-info">${info}</div>` : ''}
+      <form id="reset-form">
+        <label>Neues Passwort<input type="password" id="reset-password" autocomplete="new-password" minlength="6" required /></label>
+        <button type="submit" class="build-btn" ${busy ? 'disabled' : ''}>${busy ? 'Speichere…' : 'Passwort speichern'}</button>
+      </form>
     </div>
   </div>`;
 }

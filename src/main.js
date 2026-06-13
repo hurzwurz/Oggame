@@ -4,7 +4,7 @@ import { Game } from './engine/game.js';
 import { clearGame } from './engine/storage.js';
 import { simulateBattle } from './engine/combat.js';
 import * as V from './ui/render.js';
-import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview } from './net/supabase.js';
+import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview, resetPassword, updatePassword, onPasswordRecovery } from './net/supabase.js';
 import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
 
 // ------------------------------------------------------------- globaler Zustand
@@ -46,6 +46,8 @@ async function boot() {
   // Lässt sich die Supabase-Bibliothek nicht laden (Netz/Blocker) -> offline.
   const sb = await getClient();
   if (!sb) return startOffline('Online-Modus nicht erreichbar – du spielst lokal weiter.');
+  // Kommt der Nutzer über einen Passwort-Recovery-Link, Passwort-Screen zeigen.
+  onPasswordRecovery(() => renderResetScreen());
   try {
     const user = await currentUser();
     if (!user) {
@@ -102,6 +104,22 @@ function renderAuthScreen(authState) {
     ev.preventDefault();
     renderAuthScreen({ mode: authState.mode === 'login' ? 'signup' : 'login' });
   });
+  const forgot = document.getElementById('auth-forgot');
+  if (forgot) forgot.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    const email = (document.getElementById('auth-email').value || '').trim();
+    if (!email) {
+      renderAuthScreen({ mode: 'login', error: 'Bitte zuerst deine E-Mail eintragen, dann „Passwort vergessen“ tippen.' });
+      return;
+    }
+    try {
+      const { error } = await resetPassword(email);
+      if (error) throw error;
+      renderAuthScreen({ mode: 'login', info: 'E-Mail zum Zurücksetzen verschickt – schau in dein Postfach.' });
+    } catch (e) {
+      renderAuthScreen({ mode: 'login', error: friendlyError(e) });
+    }
+  });
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const email = document.getElementById('auth-email').value.trim();
@@ -127,6 +145,26 @@ function renderAuthScreen(authState) {
   });
   // Felder nach Re-Render wieder befüllen wäre möglich; wir halten es einfach.
   setTimeout(() => { const f = document.getElementById('auth-email'); if (f) f.focus(); }, 0);
+}
+
+function renderResetScreen(state = {}) {
+  app.innerHTML = V.renderReset(state);
+  const form = document.getElementById('reset-form');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const pw = document.getElementById('reset-password').value;
+    renderResetScreen({ busy: true });
+    try {
+      const { error } = await updatePassword(pw);
+      if (error) throw error;
+      // Passwort gesetzt -> Nutzer ist eingeloggt, ins Spiel starten.
+      const user = await currentUser();
+      if (user) await startOnline(user);
+      else renderAuthScreen({ mode: 'login', info: 'Passwort geändert. Bitte einloggen.' });
+    } catch (e) {
+      renderResetScreen({ error: friendlyError(e) });
+    }
+  });
 }
 
 function renderErrorScreen(e) {

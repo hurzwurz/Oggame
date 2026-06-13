@@ -77,6 +77,30 @@ export async function onAuthChange(cb) {
   return () => data.subscription.unsubscribe();
 }
 
+/** Schickt eine Passwort-Zurücksetzen-Mail (Link führt zurück ins Spiel). */
+export async function resetPassword(email) {
+  const sb = await need();
+  return sb.auth.resetPasswordForEmail(email, {
+    redirectTo: typeof location !== 'undefined' ? location.origin + location.pathname : undefined,
+  });
+}
+
+/** Setzt das Passwort des aktuell (über Recovery-Link) angemeldeten Nutzers. */
+export async function updatePassword(newPassword) {
+  const sb = await need();
+  return sb.auth.updateUser({ password: newPassword });
+}
+
+/** Ruft cb auf, wenn der Nutzer über einen Passwort-Recovery-Link kommt. */
+export async function onPasswordRecovery(cb) {
+  const sb = await getClient();
+  if (!sb) return () => {};
+  const { data } = sb.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') cb();
+  });
+  return () => data.subscription.unsubscribe();
+}
+
 // ----------------------------------------------------------- Datenzugriff
 
 /** Galaxie-Übersicht aller Spieler (nur öffentliche Felder). */

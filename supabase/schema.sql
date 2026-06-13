@@ -108,3 +108,29 @@ create or replace view public.galaxy_overview as
   join public.profiles pr on pr.id = p.owner;
 
 grant select on public.galaxy_overview to authenticated, anon;
+
+-- ============================================================================
+--  Mini-Spiel "Drück den Pazze" – gemeinsame Top-10-Rangliste
+-- ============================================================================
+--  Öffentlich (auch ohne Login): jeder darf seinen Score eintragen und die
+--  Liste lesen. Eintragen ist durch Längen-/Wertgrenzen leicht abgesichert.
+create table if not exists public.kopfjagd_scores (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null check (char_length(name) between 1 and 24),
+  score       int  not null check (score >= 0 and score <= 100000),
+  acc         int  check (acc >= 0 and acc <= 100),
+  created_at  timestamptz not null default now()
+);
+create index if not exists kopfjagd_scores_score_idx
+  on public.kopfjagd_scores (score desc, created_at asc);
+
+alter table public.kopfjagd_scores enable row level security;
+
+drop policy if exists kopfjagd_scores_select on public.kopfjagd_scores;
+create policy kopfjagd_scores_select on public.kopfjagd_scores
+  for select to anon, authenticated using (true);
+
+drop policy if exists kopfjagd_scores_insert on public.kopfjagd_scores;
+create policy kopfjagd_scores_insert on public.kopfjagd_scores
+  for insert to anon, authenticated
+  with check (char_length(name) between 1 and 24 and score >= 0 and score <= 100000);

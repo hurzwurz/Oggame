@@ -184,6 +184,12 @@
         color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
       }
       .clear:hover { color: var(--err); border-color: var(--err); }
+      .badge {
+        font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+        vertical-align: middle; border: 1px solid var(--border); color: var(--muted);
+      }
+      .badge.online { color: var(--ok); border-color: var(--ok); }
+      .badge.local  { color: var(--gold); border-color: var(--gold); }
 
       .foot { color: var(--muted); font-size: 12px; margin-top: 18px; text-align: center; }
       .foot a { color: var(--accent); }
@@ -227,22 +233,32 @@
       </div>
 
       <div id="board">
-        <h3>🏆 Rangliste</h3>
+        <h3>🏆 Top 10 <span id="boardStatus" class="badge">…</span></h3>
         <table>
           <thead>
             <tr><th class="rank">#</th><th>Name</th><th>Genauigkeit</th><th>Datum</th><th class="score">Treffer</th></tr>
           </thead>
           <tbody id="boardBody"></tbody>
         </table>
-        <button class="clear" id="clearBtn">Rangliste löschen</button>
+        <button class="clear" id="clearBtn">Lokalen Verlauf löschen</button>
       </div>
 
-      <p class="foot">Teil von <a href="index.html">Oggame</a> · Bestenliste wird lokal im Browser gespeichert.</p>
+      <p class="foot">Teil von <a href="index.html">Oggame</a> · Online-Bestenliste für alle Spieler (mit lokalem Fallback).</p>
     </div>
 
-    <script>
+    <script type="module">
+      import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./src/net/config.js";
+
       const GAME_TIME = 67;
       const LS_KEY = "kopfjagd.leaderboard.v1";
+
+      // ---- Online-Rangliste (Supabase REST). Beide Werte sind öffentlich.
+      const TABLE = "kopfjagd_scores";
+      const REST = SUPABASE_URL + "/rest/v1/" + TABLE;
+      const sbHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY };
+      const onlineConfigured =
+        SUPABASE_URL && SUPABASE_ANON_KEY &&
+        !SUPABASE_URL.startsWith("DEINE") && !SUPABASE_ANON_KEY.startsWith("DEIN");
 
       const field    = document.getElementById("field");
       const target   = document.getElementById("target");
@@ -256,6 +272,7 @@
       const accVal   = document.getElementById("accVal");
       const bestVal  = document.getElementById("bestVal");
       const boardBody= document.getElementById("boardBody");
+      const boardStatus = document.getElementById("boardStatus");
 
       let timeLeft = GAME_TIME;
       let score = 0;
@@ -264,30 +281,66 @@
       let running = false;
       let timerId = null;
 
-      // ---------------------------------------------------- Rangliste (localStorage)
-      function loadBoard() {
+      // ---------------------------------------------------- Rangliste
+      function loadLocal() {
         try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; }
         catch { return []; }
       }
-      function saveBoard(list) {
+      function saveLocal(list) {
         localStorage.setItem(LS_KEY, JSON.stringify(list));
       }
-      function bestScore() {
-        const b = loadBoard();
+      function localBest() {
+        const b = loadLocal();
         return b.length ? Math.max(...b.map(e => e.score)) : 0;
       }
-      function renderBoard(highlightId) {
-        const list = loadBoard().sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 10);
-        bestVal.textContent = bestScore();
+      function localTop() {
+        return loadLocal()
+          .sort((a, b) => b.score - a.score || a.time - b.time)
+          .slice(0, 10)
+          .map(e => ({ name: e.name, score: e.score, acc: e.acc, date: e.time }));
+      }
+
+      async function fetchOnline() {
+        const url = REST + "?select=name,score,acc,created_at&order=score.desc,created_at.asc&limit=10";
+        const r = await fetch(url, { headers: sbHeaders });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return (await r.json()).map(e => ({ name: e.name, score: e.score, acc: e.acc, date: e.created_at }));
+      }
+      async function submitOnline(entry) {
+        const r = await fetch(REST, {
+          method: "POST",
+          headers: { ...sbHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({ name: entry.name, score: entry.score, acc: entry.acc }),
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+      }
+
+      async function renderBoard(highlightName) {
+        let list = [], mode = "local";
+        if (onlineConfigured) {
+          try { list = await fetchOnline(); mode = "online"; }
+          catch (e) { console.warn("Online-Rangliste nicht erreichbar:", e); list = localTop(); mode = "local"; }
+        } else {
+          list = localTop();
+        }
+        boardStatus.className = "badge " + mode;
+        boardStatus.textContent = mode === "online" ? "🌐 alle Spieler" : "📴 nur dieses Gerät";
+
+        const best = Math.max(localBest(), ...list.map(e => e.score), 0);
+        bestVal.textContent = best;
+
         if (!list.length) {
           boardBody.innerHTML = '<tr><td class="empty" colspan="5">Noch keine Einträge – sei der Erste!</td></tr>';
           return;
         }
         const medals = ["🥇", "🥈", "🥉"];
+        let highlighted = false;
         boardBody.innerHTML = list.map((e, i) => {
           const rank = medals[i] ? `<span class="medal">${medals[i]}</span>` : (i + 1);
-          const date = new Date(e.time).toLocaleDateString("de-DE");
-          const you = e.id === highlightId ? " class=\"you\"" : "";
+          const date = e.date ? new Date(e.date).toLocaleDateString("de-DE") : "–";
+          const mark = (!highlighted && highlightName && e.name === highlightName);
+          if (mark) highlighted = true;
+          const you = mark ? ' class="you"' : "";
           return `<tr${you}><td class="rank">${rank}</td><td>${escapeHtml(e.name)}</td><td>${e.acc != null ? e.acc + "%" : "–"}</td><td>${date}</td><td class="score">${e.score}</td></tr>`;
         }).join("");
       }
@@ -394,29 +447,35 @@
           <button class="btn ghost" id="skipBtn">Ohne Speichern nochmal</button>
         `;
         const nameInput = document.getElementById("nameInput");
+        const saveBtn = document.getElementById("saveBtn");
         nameInput.value = localStorage.getItem("kopfjagd.lastName") || "";
         nameInput.focus();
         nameInput.select();
 
-        function save() {
-          const name = (nameInput.value || "").trim() || "Anonym";
+        let saving = false;
+        async function save() {
+          if (saving) return;
+          saving = true;
+          const name = ((nameInput.value || "").trim() || "Anonym").slice(0, 24);
           localStorage.setItem("kopfjagd.lastName", name);
-          const entry = { id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), name, score, acc, time: Date.now() };
-          const list = loadBoard();
-          list.push(entry);
-          saveBoard(list);
-          renderBoard(entry.id);
-          backToStart(`Gespeichert! Du bist ${rankOf(entry.id)}.`);
+          // Immer auch lokal sichern (persönlicher Verlauf + Fallback).
+          const local = loadLocal();
+          local.push({ name, score, acc, time: Date.now() });
+          saveLocal(local);
+
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Speichert…";
+          let msg = "Lokal gespeichert.";
+          if (onlineConfigured) {
+            try { await submitOnline({ name, score, acc }); msg = "In die Online-Rangliste eingetragen! 🌐"; }
+            catch (e) { console.warn(e); msg = "Online nicht erreichbar – nur lokal gespeichert."; }
+          }
+          await renderBoard(name);
+          backToStart(msg);
         }
-        document.getElementById("saveBtn").addEventListener("click", save);
+        saveBtn.addEventListener("click", save);
         nameInput.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
         document.getElementById("skipBtn").addEventListener("click", () => backToStart());
-      }
-
-      function rankOf(id) {
-        const sorted = loadBoard().sort((a, b) => b.score - a.score || a.time - b.time);
-        const idx = sorted.findIndex(e => e.id === id);
-        return idx >= 0 ? `auf Platz ${idx + 1}` : "in der Liste";
       }
 
       function backToStart(msg) {
@@ -429,8 +488,8 @@
       // ---------------------------------------------------- Init
       document.getElementById("startBtn").addEventListener("click", startGame);
       document.getElementById("clearBtn").addEventListener("click", () => {
-        if (confirm("Wirklich die gesamte Rangliste löschen?")) {
-          saveBoard([]);
+        if (confirm("Deinen lokalen Verlauf auf diesem Gerät löschen?\n(Die gemeinsame Online-Rangliste bleibt für alle bestehen.)")) {
+          saveLocal([]);
           renderBoard();
         }
       });

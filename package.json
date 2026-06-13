@@ -1,0 +1,12 @@
+{
+  "name": "oggame",
+  "version": "0.1.0",
+  "description": "Ein OGame-inspiriertes Weltraum-Strategiespiel im Browser – mit großer Schiffsdatenbank.",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.js",
+    "dev": "node serve.js"
+  },
+  "license": "MIT",
+  "private": true
+}

@@ -353,7 +353,7 @@ export function renderGalaxy(game, dispatch, players = []) {
 // ------------------------------------------------------------------ Login
 
 export function renderLogin(state) {
-  const { mode = 'login', error = '', info = '', busy = false } = state;
+  const { mode = 'login', error = '', info = '', busy = false, email = '' } = state;
   const isSignup = mode === 'signup';
   return `<div class="login-wrap">
     <div class="panel login-card">
@@ -363,7 +363,7 @@ export function renderLogin(state) {
       ${info ? `<div class="login-info">${info}</div>` : ''}
       <form id="auth-form">
         ${isSignup ? `<label>Spielername<input type="text" id="auth-username" autocomplete="username" required /></label>` : ''}
-        <label>E-Mail<input type="email" id="auth-email" autocomplete="email" required /></label>
+        <label>E-Mail<input type="email" id="auth-email" autocomplete="email" value="${email}" required /></label>
         <label>Passwort<input type="password" id="auth-password" autocomplete="${isSignup ? 'new-password' : 'current-password'}" minlength="6" required /></label>
         <button type="submit" class="build-btn" ${busy ? 'disabled' : ''}>${busy ? 'Bitte warten…' : isSignup ? 'Registrieren' : 'Einloggen'}</button>
       </form>

@@ -96,75 +96,90 @@ async function refreshPlayers() {
 
 // ===================================================================== Screens
 
-function renderAuthScreen(authState) {
-  app.innerHTML = V.renderLogin(authState);
-  const form = document.getElementById('auth-form');
-  const toggle = document.getElementById('auth-toggle');
-  toggle.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    renderAuthScreen({ mode: authState.mode === 'login' ? 'signup' : 'login' });
-  });
-  const forgot = document.getElementById('auth-forgot');
-  if (forgot) forgot.addEventListener('click', async (ev) => {
-    ev.preventDefault();
-    const email = (document.getElementById('auth-email').value || '').trim();
-    if (!email) {
-      renderAuthScreen({ mode: 'login', error: 'Bitte zuerst deine E-Mail eintragen, dann „Passwort vergessen“ tippen.' });
-      return;
-    }
-    try {
-      const { error } = await resetPassword(email);
-      if (error) throw error;
-      renderAuthScreen({ mode: 'login', info: 'E-Mail zum Zurücksetzen verschickt – schau in dein Postfach.' });
-    } catch (e) {
-      renderAuthScreen({ mode: 'login', error: friendlyError(e) });
-    }
-  });
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const email = document.getElementById('auth-email').value.trim();
-    const password = document.getElementById('auth-password').value;
-    const username = (document.getElementById('auth-username') || {}).value;
-    renderAuthScreen({ ...authState, busy: true });
-    try {
-      if (authState.mode === 'signup') {
-        const { data, error } = await signUp(email, password, (username || '').trim() || email.split('@')[0]);
-        if (error) throw error;
-        if (!data.session) {
-          renderAuthScreen({ mode: 'login', error: 'Konto erstellt! Bitte E-Mail bestätigen (oder „Confirm email“ in Supabase deaktivieren), dann einloggen.' });
-          return;
-        }
-      } else {
-        const { error } = await signIn(email, password);
-        if (error) throw error;
-      }
-      await boot();
-    } catch (e) {
-      renderAuthScreen({ mode: authState.mode, error: friendlyError(e) });
-    }
-  });
-  // Felder nach Re-Render wieder befüllen wäre möglich; wir halten es einfach.
+let authMode = 'login';
+let authBound = false;
+
+function renderAuthScreen(state = { mode: 'login' }) {
+  authMode = state.mode || 'login';
+  app.innerHTML = V.renderLogin(state);
+  bindAuthDelegation();
   setTimeout(() => { const f = document.getElementById('auth-email'); if (f) f.focus(); }, 0);
 }
 
 function renderResetScreen(state = {}) {
   app.innerHTML = V.renderReset(state);
-  const form = document.getElementById('reset-form');
-  form.addEventListener('submit', async (ev) => {
+  bindAuthDelegation();
+}
+
+// Ein einziger Listener am Container – überlebt jedes Neuzeichnen (robust auf Mobil).
+function bindAuthDelegation() {
+  if (authBound) return;
+  authBound = true;
+  app.addEventListener('click', (ev) => {
+    const link = ev.target.closest('#auth-toggle, #auth-forgot');
+    if (!link) return;
     ev.preventDefault();
-    const pw = document.getElementById('reset-password').value;
-    renderResetScreen({ busy: true });
-    try {
-      const { error } = await updatePassword(pw);
-      if (error) throw error;
-      // Passwort gesetzt -> Nutzer ist eingeloggt, ins Spiel starten.
-      const user = await currentUser();
-      if (user) await startOnline(user);
-      else renderAuthScreen({ mode: 'login', info: 'Passwort geändert. Bitte einloggen.' });
-    } catch (e) {
-      renderResetScreen({ error: friendlyError(e) });
-    }
+    if (link.id === 'auth-toggle') renderAuthScreen({ mode: authMode === 'login' ? 'signup' : 'login' });
+    else doForgot();
   });
+  app.addEventListener('submit', (ev) => {
+    if (ev.target.id === 'auth-form') { ev.preventDefault(); doAuthSubmit(); }
+    else if (ev.target.id === 'reset-form') { ev.preventDefault(); doReset(); }
+  });
+}
+
+async function doForgot() {
+  const email = ((document.getElementById('auth-email') || {}).value || '').trim();
+  if (!email) {
+    renderAuthScreen({ mode: 'login', error: 'Bitte zuerst deine E-Mail oben eintragen, dann „Passwort vergessen“ tippen.' });
+    return;
+  }
+  toast('Sende E-Mail …', true);
+  try {
+    const { error } = await resetPassword(email);
+    if (error) throw error;
+    renderAuthScreen({ mode: 'login', email, info: 'E-Mail zum Zurücksetzen verschickt – schau ins Postfach (ggf. Spam).' });
+  } catch (e) {
+    renderAuthScreen({ mode: 'login', email, error: friendlyError(e) });
+  }
+}
+
+async function doAuthSubmit() {
+  const email = (document.getElementById('auth-email').value || '').trim();
+  const password = document.getElementById('auth-password').value;
+  const username = (document.getElementById('auth-username') || {}).value;
+  renderAuthScreen({ mode: authMode, email, busy: true });
+  try {
+    if (authMode === 'signup') {
+      const { data, error } = await signUp(email, password, (username || '').trim() || email.split('@')[0]);
+      if (error) throw error;
+      if (!data.session) {
+        renderAuthScreen({ mode: 'login', email, error: 'Konto erstellt! Bitte E-Mail bestätigen (oder „Confirm email“ in Supabase deaktivieren), dann einloggen.' });
+        return;
+      }
+    } else {
+      const { error } = await signIn(email, password);
+      if (error) throw error;
+    }
+    await boot();
+  } catch (e) {
+    renderAuthScreen({ mode: authMode, email, error: friendlyError(e) });
+  }
+}
+
+async function doReset() {
+  const pw = document.getElementById('reset-password').value;
+  renderResetScreen({ busy: true });
+  try {
+    const { error } = await updatePassword(pw);
+    if (error) throw error;
+    // Passwort gesetzt -> Nutzer ist eingeloggt, ins Spiel starten.
+    const user = await currentUser();
+    if (user) await startOnline(user);
+    else renderAuthScreen({ mode: 'login', info: 'Passwort geändert. Bitte einloggen.' });
+  } catch (e) {
+    renderResetScreen({ error: friendlyError(e) });
+  }
 }
 
 function renderErrorScreen(e) {

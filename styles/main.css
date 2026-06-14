@@ -407,57 +407,57 @@ button.build-btn:hover:not(:disabled) { box-shadow: 0 0 20px rgba(34,211,238,.65
 }
 .booster-bar .build-btn { margin: 0; }
 
-/* ============================================================ Eckiges Grau/Neonblau-Schema (final) */
+/* ============================================================ Grau / Schwarz / Blau (final) */
 :root {
-  --bg: #0d0f13;          /* dunkelgrau / fast schwarz */
-  --bg2: #14171d;
-  --panel: #191d25;       /* dunkelgrau */
-  --panel2: #222833;
-  --border: #2c333f;      /* grau */
-  --text: #d6dce5;        /* hellgrau */
-  --muted: #8893a3;
-  --accent: #18a0ff;      /* neonblau */
-  --neon: #18a0ff;
-  --neon2: #18a0ff;
-  --babyblue: #8ecae6;
-  --metal: #b9c4d6;       /* grau */
-  --crystal: #8ecae6;     /* babyblau */
-  --deut: #5ee6a8;
-  --energy: #ffd84e;
+  --bg: #060708;          /* fast schwarz */
+  --bg2: #0c0e12;
+  --panel: #14161c;       /* dunkelgrau */
+  --panel2: #1c1f27;
+  --border: #2a2f3a;      /* grau */
+  --text: #d2d8e2;        /* hellgrau */
+  --muted: #828a98;
+  --accent: #2b8cff;      /* blau */
+  --neon: #2b8cff;
+  --neon2: #2b8cff;
+  --babyblue: #6fa8d6;    /* gedämpftes graublau (kein Cyan mehr) */
+  --metal: #aeb6c4;       /* grau */
+  --crystal: #6fa8d6;     /* graublau */
+  --deut: #7f93b5;        /* blaugrau */
+  --energy: #d8e0ec;      /* hellgrau statt gelb */
 }
 /* Alle Boxen eckig */
 #topbar, .res, .tab, .panel, .card, .base-tile, .thumb, #toast, button, input, select,
 .login-card, .skip, .booster-bar, .buildable-note, .login-error, .login-info, .report-card {
   border-radius: 0 !important;
 }
-/* Hintergrund: dunkelgrau mit dezentem Neonblau-Schimmer + Sterne/Gitter in Blau */
+/* Hintergrund: schwarz mit dezentem Blau-Schimmer + Gitter in Blau */
 body {
   background:
-    radial-gradient(1200px 600px at 50% -220px, rgba(24,160,255,.16), transparent 70%),
-    radial-gradient(900px 520px at 90% 10%, rgba(142,202,230,.07), transparent 70%),
-    #0d0f13;
+    radial-gradient(1200px 600px at 50% -220px, rgba(43,140,255,.14), transparent 70%),
+    radial-gradient(900px 520px at 90% 10%, rgba(43,140,255,.05), transparent 70%),
+    #060708;
 }
 body::after { background-image:
-  linear-gradient(rgba(24,160,255,.5) 1px, transparent 1px),
-  linear-gradient(90deg, rgba(24,160,255,.5) 1px, transparent 1px); }
+  linear-gradient(rgba(43,140,255,.45) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(43,140,255,.45) 1px, transparent 1px); }
 .c-xp { color: var(--neon); }
 .c-crystal { color: var(--babyblue); }
 
-/* Brand & Akzente auf Grau/Babyblau/Neonblau */
-#brand span { background: linear-gradient(90deg, #b9c4d6, #8ecae6 45%, #18a0ff);
+/* Brand & Akzente auf Grau / Schwarz / Blau */
+#brand span { background: linear-gradient(90deg, #aeb6c4, #6fa8d6 45%, #2b8cff);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 16px rgba(24,160,255,.4); }
-#brand .logo { filter: drop-shadow(0 0 10px rgba(24,160,255,.6)); }
-.group { color: var(--neon); text-shadow: 0 0 10px rgba(24,160,255,.3); }
-.tab.active { background: linear-gradient(180deg, #18a0ff, #0d7fd6); color: #03121f;
-  box-shadow: 0 0 16px rgba(24,160,255,.55); border-color: #18a0ff; }
-button.build-btn { background: linear-gradient(180deg, #2aa8ff, #0d7fd6); color: #03121f;
-  box-shadow: 0 0 12px rgba(24,160,255,.4); }
-.panel { border-color: rgba(24,160,255,.16); background: linear-gradient(180deg, #1b212b, #14181f); }
-#topbar { border-color: rgba(24,160,255,.22); }
-.card:not(.locked):hover { border-color: var(--neon); box-shadow: 0 8px 22px rgba(24,160,255,.22); }
-.booster-bar { background: linear-gradient(90deg, rgba(24,160,255,.12), rgba(142,202,230,.10));
-  border-color: rgba(24,160,255,.35); }
+  text-shadow: 0 0 16px rgba(43,140,255,.4); }
+#brand .logo { filter: drop-shadow(0 0 10px rgba(43,140,255,.6)); }
+.group { color: var(--neon); text-shadow: 0 0 10px rgba(43,140,255,.3); }
+.tab.active { background: linear-gradient(180deg, #2b8cff, #0d5fb0); color: #eaf2ff;
+  box-shadow: 0 0 16px rgba(43,140,255,.55); border-color: #2b8cff; }
+button.build-btn { background: linear-gradient(180deg, #2b8cff, #0d5fb0); color: #eaf2ff;
+  box-shadow: 0 0 12px rgba(43,140,255,.4); }
+.panel { border-color: rgba(43,140,255,.16); background: linear-gradient(180deg, #161922, #0e1016); }
+#topbar { border-color: rgba(43,140,255,.22); }
+.card:not(.locked):hover { border-color: var(--neon); box-shadow: 0 8px 22px rgba(43,140,255,.22); }
+.booster-bar { background: linear-gradient(90deg, rgba(43,140,255,.12), rgba(43,140,255,.05));
+  border-color: rgba(43,140,255,.35); }
 
 /* Admin-Aktionen nebeneinander mit Abstand (kein Verdrücken) */
 .admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -495,14 +495,14 @@ button.build-btn { background: linear-gradient(180deg, #2aa8ff, #0d7fd6); color:
   .queue th, .queue td { padding: 5px 6px; font-size: 12px; }
 }
 
-.rank-me { background: rgba(24,160,255,.12); }
+.rank-me { background: rgba(43,140,255,.12); }
 .rank-me td { font-weight: 700; }
 
 /* In Bau befindlicher Button: Countdown statt ausgegraut */
 button.build-btn.building-timer {
-  background: linear-gradient(180deg, #15323f, #0f2733);
-  color: #7fe3ff; border: 1px solid var(--neon);
-  box-shadow: 0 0 12px rgba(24,160,255,.35); cursor: default; opacity: 1;
+  background: linear-gradient(180deg, #16243a, #0d1626);
+  color: #9fc8ff; border: 1px solid var(--neon);
+  box-shadow: 0 0 12px rgba(43,140,255,.35); cursor: default; opacity: 1;
 }
 .card.building-now { border-color: var(--neon); box-shadow: 0 0 0 1px var(--neon) inset; }
 
@@ -516,9 +516,9 @@ button.build-btn.building-timer {
 }
 .bp-day .bp-d { font-weight: 700; font-size: 12px; }
 .bp-day.done {
-  border-color: var(--neon); color: #7fe3ff;
-  background: linear-gradient(180deg, #15323f, #0f2733);
-  box-shadow: 0 0 8px rgba(24,160,255,.30);
+  border-color: var(--neon); color: #9fc8ff;
+  background: linear-gradient(180deg, #16243a, #0d1626);
+  box-shadow: 0 0 8px rgba(43,140,255,.30);
 }
 @media (max-width: 460px) {
   .bp-grid { grid-template-columns: repeat(4, 1fr); }

@@ -2,7 +2,7 @@
 // WICHTIG: Holt eigene Dateien IMMER frisch vom Server (umgeht den HTTP-Cache),
 // damit neue Deploys sofort ankommen. Cache dient nur als Offline-Fallback.
 
-const CACHE = 'nexarion-v3';
+const CACHE = 'nexarion-v4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

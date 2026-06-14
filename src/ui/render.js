@@ -181,6 +181,27 @@ export function renderOverview(game) {
           </table>
         </div>
       </div>
+    </div>
+    ${overviewBaseStrip(game)}`;
+}
+
+// Bild-Streifen der eigenen Gebäude für die Übersicht (zeigt die Asset-Grafiken).
+function overviewBaseStrip(game) {
+  const s = game.state;
+  const built = BUILDINGS.filter((b) => (s.buildings[b.id] || 0) > 0);
+  if (!built.length) return '';
+  const buildingNow = s.queues.building ? s.queues.building.id : null;
+  const tiles = built.map((b) => {
+    const now = b.id === buildingNow ? ' building-now' : '';
+    return `<div class="base-tile${now}">
+      ${thumbHtml('buildings', b.id, getIcon(b.id, 'building'))}
+      <div class="bt-name">${b.name}</div>
+      <div class="bt-level">Stufe ${s.buildings[b.id]}${now ? ' · baut…' : ''}</div>
+    </div>`;
+  }).join('');
+  return `<div class="panel">
+      <h3>🏛️ Deine Anlagen</h3>
+      <div class="base-grid">${tiles}</div>
     </div>`;
 }
 

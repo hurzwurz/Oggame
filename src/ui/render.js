@@ -951,3 +951,38 @@ export function renderRanking(state) {
       <table class="queue"><thead><tr><th>#</th><th>Allianz</th><th>Mitgl.</th><th>Punkte</th></tr></thead><tbody>${arows}</tbody></table>
     </div>`;
 }
+
+// ------------------------------------------------------------------ Battle Pass
+
+export const SPEED_COST = 50; // Coins für den Speed-Gutschein
+
+export function renderDaily(state, game) {
+  if (!state.online) return `<div class="panel"><p class="muted">Battle Pass gibt es nur im Online-Modus (eingeloggt).</p></div>`;
+  const dayInCycle = (((state.streak || 0) - 1) % 7) + 1;
+  let days = '';
+  for (let i = 1; i <= 7; i++) {
+    const reached = state.streak > 0 && i <= dayInCycle;
+    const isCur = state.claimable && i === ((state.streak % 7) + 1 || 1) ? false : false; // nur Stil
+    days += `<div class="bp-day ${reached ? 'done' : ''}">
+      <div class="bp-d">Tag ${i}</div><div class="muted small">${50 * i} 🪙</div></div>`;
+  }
+  const speedActive = game && game.speedActive && game.speedActive();
+  return `
+    <div class="panel">
+      <h2>📅 Battle Pass</h2>
+      <p>🔥 Streak: <b>${state.streak || 0}</b> Tag(e) in Folge</p>
+      <div class="bp-grid">${days}</div>
+      ${state.claimable
+        ? `<button id="claim-daily" class="build-btn" style="margin-top:14px">🎁 Tagesbelohnung abholen</button>`
+        : `<p class="muted" style="margin-top:10px">Heute schon abgeholt – komm morgen wieder für mehr! ✅</p>`}
+    </div>
+    <div class="panel">
+      <h3>⚡ Gutscheine</h3>
+      <div class="booster-bar">
+        <span><b>Speed-Gutschein</b> – 70 % schnellerer Bau für 5 Min</span>
+        ${speedActive
+          ? `<b class="win">aktiv – noch ${fmtTime(game.speedRemaining())}</b>`
+          : `<button id="buy-speed" class="build-btn">Aktivieren (${SPEED_COST} 🪙)</button>`}
+      </div>
+    </div>`;
+}

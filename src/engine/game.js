@@ -29,6 +29,7 @@ function defaultState() {
       shipyard: [], // [ { id, kind, remaining, perUnitSeconds, nextAt } ]
     },
     booster: { until: 0 }, // { until } – aktiv solange until > now
+    speed: { until: 0, factor: 0.3 }, // Speed-Gutschein (Bauzeit * factor)
     xp: 0, // Erfahrungspunkte (jeder Bau bringt XP)
     galaxy: G.generateGalaxy(),
     fleets: [], // unterwegs befindliche Missionen
@@ -68,6 +69,7 @@ export class Game {
       debris: saved.debris || {},
       fleetSeq: saved.fleetSeq || 1,
       xp: saved.xp || 0,
+      speed: saved.speed || { until: 0, factor: 0.3 },
     };
   }
 
@@ -233,6 +235,24 @@ export class Game {
     this.save();
   }
 
+  // ------------------------------------------------------------- Speed-Gutschein
+  speedActive(now = Date.now()) { return !!(this.state.speed && this.state.speed.until > now); }
+  speedRemaining(now = Date.now()) { return this.speedActive(now) ? Math.ceil((this.state.speed.until - now) / 1000) : 0; }
+  /** Aktiviert einen Speed-Gutschein: Bauzeit * factor für durationSec Sekunden. */
+  activateSpeed(durationSec = 300, factor = 0.3) {
+    const now = Date.now();
+    this.state.speed = { until: now + durationSec * 1000, factor };
+    this.save();
+  }
+  /** Gesamt-Multiplikator für Bauzeiten (Booster, Speed-Gutschein, Bauzeit-Aus). */
+  _buildTimeMult() {
+    if (this.freeTime) return 0;
+    let m = 1;
+    if (this.boosterActive()) m *= 0.5;
+    if (this.speedActive()) m *= (this.state.speed && this.state.speed.factor) || 0.3;
+    return m;
+  }
+
   /** Versucht, ein Gebäude in Auftrag zu geben. Gibt {ok, error} zurück. */
   buildBuilding(id) {
     const def = BUILDING_MAP[id];
@@ -249,9 +269,7 @@ export class Game {
       if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
       this._spend(cost);
     }
-    let seconds = F.buildTimeSeconds(cost, this.state.buildings);
-    if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
-    if (this.freeTime) seconds = 0;
+    const seconds = Math.ceil(F.buildTimeSeconds(cost, this.state.buildings) * this._buildTimeMult());
     this.state.queues[slot] = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
     return { ok: true };
@@ -271,9 +289,7 @@ export class Game {
       if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
       this._spend(cost);
     }
-    let seconds = F.researchTimeSeconds(cost, this.state.buildings);
-    if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
-    if (this.freeTime) seconds = 0;
+    const seconds = Math.ceil(F.researchTimeSeconds(cost, this.state.buildings) * this._buildTimeMult());
     this.state.queues.research = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
     return { ok: true };
@@ -306,7 +322,7 @@ export class Game {
       this._spend(F.unitCost(def, amount));
     }
 
-    const perUnitSeconds = this.freeTime ? 0 : F.buildTimeSeconds(F.unitCost(def, 1), this.state.buildings);
+    const perUnitSeconds = Math.ceil(F.buildTimeSeconds(F.unitCost(def, 1), this.state.buildings) * this._buildTimeMult());
     const q = this.state.queues.shipyard;
     const startNow = q.length === 0;
     q.push({

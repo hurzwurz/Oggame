@@ -505,3 +505,21 @@ button.build-btn.building-timer {
   box-shadow: 0 0 12px rgba(24,160,255,.35); cursor: default; opacity: 1;
 }
 .card.building-now { border-color: var(--neon); box-shadow: 0 0 0 1px var(--neon) inset; }
+
+/* ===== Battle Pass: 7-Tage-Streak-Raster ===== */
+.bp-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 12px;
+}
+.bp-day {
+  background: var(--bg2); border: 1px solid var(--border);
+  padding: 8px 4px; text-align: center;
+}
+.bp-day .bp-d { font-weight: 700; font-size: 12px; }
+.bp-day.done {
+  border-color: var(--neon); color: #7fe3ff;
+  background: linear-gradient(180deg, #15323f, #0f2733);
+  box-shadow: 0 0 8px rgba(24,160,255,.30);
+}
+@media (max-width: 460px) {
+  .bp-grid { grid-template-columns: repeat(4, 1fr); }
+}

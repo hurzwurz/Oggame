@@ -18,6 +18,7 @@ let players = []; // andere Spieler aus der Galaxie
 let allianceData = { online: false };
 let friendData = { online: false };
 let rankingData = { online: false };
+let dailyData = { online: false };
 let isAdmin = false;
 let adminData = { online: false, isAdmin: false, players: [] };
 
@@ -40,6 +41,7 @@ const TABS = {
   movement: { label: 'Flotten', render: (g) => V.renderMovements(g) },
   reports: { label: 'Berichte', render: (g) => V.renderReports(g) },
   ranking: { label: '🏆 Rangliste', render: () => V.renderRanking(rankingData) },
+  daily: { label: '📅 Battle Pass', render: () => V.renderDaily(dailyData, game) },
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
@@ -59,7 +61,7 @@ function profileState() {
     isAdmin,
   };
 }
-const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports', 'buildings', 'research']);
+const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports', 'buildings', 'research', 'daily']);
 let activeTab = 'overview';
 
 const app = document.getElementById('app');
@@ -375,6 +377,47 @@ async function refreshRanking() {
     rankingData = { online: true, error: friendlyError(e) };
   }
   if (activeTab === 'ranking') renderView();
+}
+
+async function refreshDaily() {
+  if (!userInfo) { dailyData = { online: false }; if (activeTab === 'daily') renderView(); return; }
+  dailyData = { online: true, loading: true };
+  if (activeTab === 'daily') renderView();
+  try {
+    const st = await Coins.dailyStatus();
+    dailyData = { online: true, streak: (st && st.streak) || 0, claimable: !!(st && st.claimable) };
+  } catch (e) {
+    dailyData = { online: true, streak: 0, claimable: false, error: friendlyError(e) };
+  }
+  if (activeTab === 'daily') renderView();
+}
+
+async function doClaimDaily() {
+  try {
+    const res = await Coins.claimDaily();
+    if (res && res.already) { toast('Heute schon abgeholt – komm morgen wieder!', false); }
+    else {
+      try { game.coins = await Coins.getCoins(); } catch { /* optional */ }
+      if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game);
+      toast(`🎁 +${(res && res.reward_coins) || 0} Coins! Streak: ${(res && res.streak) || 1} Tag(e).`, true);
+    }
+    await refreshDaily();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
+async function doBuySpeed() {
+  try {
+    game.coins = await Coins.spendCoins(V.SPEED_COST);
+    game.activateSpeed(300, 0.3);
+    persistNow();
+    toast('⚡ Speed-Gutschein aktiv: 70 % schneller bauen für 5 Min!', true);
+    if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game);
+    renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
 }
 
 async function refreshAdmin() {
@@ -751,6 +794,7 @@ async function onTabClick(ev) {
   if (activeTab === 'alliance') await refreshAlliance();
   if (activeTab === 'friends') await refreshFriends();
   if (activeTab === 'ranking') await refreshRanking();
+  if (activeTab === 'daily') await refreshDaily();
   if (activeTab === 'admin') await refreshAdmin();
   if (activeTab === 'reports' && userInfo) { await mergeServerReports(); renderView(); }
 }
@@ -774,6 +818,8 @@ function onViewClick(ev) {
   if (btn.id === 'pf-save-planet') { doSavePlanet(); return; }
   if (btn.id === 'pf-logout') { doLogout(); return; }
   if (btn.id === 'booster-btn') { doBooster(); return; }
+  if (btn.id === 'claim-daily') { doClaimDaily(); return; }
+  if (btn.id === 'buy-speed') { doBuySpeed(); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.id === 'admin-refresh' || btn.id === 'admin-freebuild' || btn.id === 'admin-instant' || btn.classList.contains('admin-gift') ||

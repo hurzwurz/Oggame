@@ -113,3 +113,21 @@ export async function adminSetSetting(key, value) {
   const { error } = await sb.rpc('admin_set_setting', { k: key, v: value });
   if (error) throw error;
 }
+
+/** Battle Pass: Status (Streak + heute abholbar). */
+export async function dailyStatus() {
+  const sb = await getClient();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('daily_status');
+  if (error) throw error;
+  return data;
+}
+
+/** Battle Pass: Tagesbelohnung abholen. */
+export async function claimDaily() {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { data, error } = await sb.rpc('claim_daily');
+  if (error) throw error;
+  return data;
+}

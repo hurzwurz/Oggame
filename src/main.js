@@ -341,27 +341,32 @@ function askNum(msg, def) {
 
 async function doAdmin(btn) {
   const user = btn.dataset.user;
+  const isSelf = !!(userInfo && user === userInfo.username);
+  const syncTopbar = () => { if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game); };
   try {
     if (btn.id === 'admin-refresh') return refreshAdmin();
     if (btn.classList.contains('admin-gift')) {
       const n = askNum(`Wie viele Coins für ${user}? (negativ = abziehen)`, 100);
       if (n === null) return;
       const bal = await Coins.adminGrant(user, n);
-      toast(`${user}: ${bal} Coins.`, true);
+      if (isSelf && game) { game.coins = bal; syncTopbar(); }
+      toast(`${user}: ${bal} Coins.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-xp')) {
       const n = askNum(`XP/Punkte für ${user} setzen auf:`, 0);
       if (n === null) return;
       await Coins.adminSetPoints(user, n);
-      toast(`${user}: XP gesetzt auf ${n}.`, true);
+      if (isSelf && game) { game.state.xp = Math.max(0, n); game.save(); syncTopbar(); }
+      toast(`${user}: XP gesetzt auf ${n}.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-level')) {
       const n = askNum(`Level für ${user} setzen auf:`, 1);
       if (n === null) return;
       await Coins.adminSetLevel(user, n);
-      toast(`${user}: Level ${n} gesetzt.`, true);
+      if (isSelf && game) { game.state.xp = 100 * Math.pow(Math.max(1, n) - 1, 2); game.save(); syncTopbar(); }
+      toast(`${user}: Level ${n} gesetzt.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-res')) {
@@ -370,7 +375,8 @@ async function doAdmin(btn) {
       const n = askNum(`${names[k] || k} für ${user} (negativ = abziehen):`, 1000);
       if (n === null) return;
       await Coins.adminAddResource(user, k, n);
-      toast(`${user}: ${n >= 0 ? '+' : ''}${n} ${names[k] || k}.`, true);
+      if (isSelf && game) { game.state.resources[k] = Math.max(0, (game.state.resources[k] || 0) + n); game.save(); syncTopbar(); }
+      toast(`${user}: ${n >= 0 ? '+' : ''}${n} ${names[k] || k}.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
     if (btn.id === 'admin-freebuild') {

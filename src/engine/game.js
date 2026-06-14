@@ -41,6 +41,7 @@ export class Game {
   constructor(options = {}) {
     // Speicher-Callback: online -> Cloud, sonst localStorage.
     this._onSave = options.onSave || ((state) => saveGame(state));
+    this.freeBuild = false; // globaler Admin-Schalter: Baukosten aus
     const source = options.initialState || loadGame();
     this.state = source ? this._migrate(source) : defaultState();
     // Offline-Fortschritt nachholen
@@ -241,8 +242,10 @@ export class Game {
     else return { ok: false, error: 'Bauschleife belegt' };
     const level = this.state.buildings[id] || 0;
     const cost = F.levelCost(def, level);
-    if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
-    this._spend(cost);
+    if (!this.freeBuild) {
+      if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
+      this._spend(cost);
+    }
     let seconds = F.buildTimeSeconds(cost, this.state.buildings);
     if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
     this.state.queues[slot] = { id, finishAt: Date.now() + seconds * 1000 };
@@ -260,8 +263,10 @@ export class Game {
     if (!F.requirementsMet(def, this.state)) return { ok: false, error: 'Voraussetzungen fehlen' };
     const level = this.state.research[id] || 0;
     const cost = F.levelCost(def, level);
-    if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
-    this._spend(cost);
+    if (!this.freeBuild) {
+      if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
+      this._spend(cost);
+    }
     let seconds = F.researchTimeSeconds(cost, this.state.buildings);
     if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
     this.state.queues.research = { id, finishAt: Date.now() + seconds * 1000 };
@@ -285,16 +290,17 @@ export class Game {
       if (amount <= 0) return { ok: false, error: 'Maximale Anzahl erreicht' };
     }
 
-    const totalCost = F.unitCost(def, amount);
-    if (!F.canAfford(this.state.resources, totalCost)) {
-      // So viele bauen, wie leistbar sind
-      const affordable = this._affordableAmount(def);
-      if (affordable <= 0) return { ok: false, error: 'Nicht genug Ressourcen' };
-      amount = def.max ? Math.min(amount, affordable) : affordable;
+    if (!this.freeBuild) {
+      const totalCost = F.unitCost(def, amount);
+      if (!F.canAfford(this.state.resources, totalCost)) {
+        // So viele bauen, wie leistbar sind
+        const affordable = this._affordableAmount(def);
+        if (affordable <= 0) return { ok: false, error: 'Nicht genug Ressourcen' };
+        amount = def.max ? Math.min(amount, affordable) : affordable;
+      }
+      this._spend(F.unitCost(def, amount));
     }
 
-    const finalCost = F.unitCost(def, amount);
-    this._spend(finalCost);
     const perUnitSeconds = F.buildTimeSeconds(F.unitCost(def, 1), this.state.buildings);
     const q = this.state.queues.shipyard;
     const startNow = q.length === 0;

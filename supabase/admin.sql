@@ -99,3 +99,43 @@ begin
   ) where id = pid;
 end $$;
 grant execute on function public.admin_set_resources(text, bigint, bigint, bigint, bigint, bigint) to authenticated;
+
+-- Admin: eine einzelne Ressource gezielt erhöhen/verringern.
+create or replace function public.admin_add_resource(target_username text, kind text, amount bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare tid uuid; pid uuid;
+begin
+  if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
+    raise exception 'Keine Admin-Rechte'; end if;
+  if kind not in ('metal','crystal','deuterium','gold','titan') then
+    raise exception 'Unbekannte Ressource'; end if;
+  select id into tid from public.profiles where username = target_username;
+  if tid is null then raise exception 'Spieler nicht gefunden'; end if;
+  select id into pid from public.planets where owner = tid order by created_at limit 1;
+  if pid is null then raise exception 'Spieler hat noch keinen Planeten'; end if;
+  update public.planets set resources = jsonb_set(
+    coalesce(resources, '{}'::jsonb), array[kind],
+    to_jsonb(greatest(0, coalesce((resources->>kind)::numeric, 0) + amount)), true
+  ) where id = pid;
+end $$;
+grant execute on function public.admin_add_resource(text, text, bigint) to authenticated;
+
+-- Globale Spieleinstellungen (z. B. Baukosten an/aus)
+create table if not exists public.game_settings (
+  key   text primary key,
+  value text not null
+);
+alter table public.game_settings enable row level security;
+drop policy if exists gs_select on public.game_settings;
+create policy gs_select on public.game_settings for select to anon, authenticated using (true);
+insert into public.game_settings(key, value) values ('free_build', 'false') on conflict do nothing;
+
+create or replace function public.admin_set_setting(k text, v text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
+    raise exception 'Keine Admin-Rechte'; end if;
+  insert into public.game_settings(key, value) values (k, v)
+    on conflict (key) do update set value = excluded.value;
+end $$;
+grant execute on function public.admin_set_setting(text, text) to authenticated;

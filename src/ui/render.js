@@ -795,29 +795,31 @@ export function renderAdmin(state) {
   if (!state.isAdmin) return `<div class="panel"><p class="muted">Kein Zugriff – nur für Admins.</p></div>`;
 
   const players = state.players || [];
-  const rows = players.length
+  const cards = players.length
     ? players.map((p) => {
-        const name = p.username || '<span class="muted">(nie gespielt)</span>';
-        const actions = p.username
-          ? `<div class="admin-actions">
-              <button class="admin-gift" data-user="${p.username}">🪙 Coins</button>
-              <button class="admin-xp" data-user="${p.username}">⭐ XP</button>
-              <button class="admin-level" data-user="${p.username}">🎚 Level</button>
-              <button class="admin-res" data-user="${p.username}">📦 Res</button>
-              ${p.banned
-                ? `<button class="admin-unban" data-user="${p.username}">✅ Frei</button>`
-                : `<button class="admin-ban ghost" data-user="${p.username}">🚫 Bann</button>`}
-            </div>`
-          : '<span class="muted">–</span>';
         const lvl = Math.floor(Math.sqrt((p.points || 0) / 100)) + 1;
-        return `<tr class="${p.banned ? 'banned-row' : ''}">
-          <td>${name}${p.banned ? ' <span class="lose">🚫</span>' : ''}<br><span class="muted small">${p.email || ''}</span></td>
-          <td>${fmt(p.points || 0)}<br><span class="muted small">⭐ Lvl ${lvl}</span></td>
-          <td>🪙 ${fmt(p.coins || 0)}</td>
-          <td>${actions}</td>
-        </tr>`;
+        const u = p.username;
+        if (!u) {
+          return `<div class="admin-card"><div class="ac-head"><span class="muted">(nie gespielt)</span></div><div class="muted small">${esc(p.email)}</div></div>`;
+        }
+        const res = [['metal', '⛏️ Metall'], ['crystal', '💎 Kristall'], ['deuterium', '🛢️ Deut'], ['gold', '🟡 Gold'], ['titan', '🔩 Titan']]
+          .map(([k, lbl]) => `<button class="admin-res" data-user="${esc(u)}" data-kind="${k}">${lbl}</button>`).join('');
+        return `<div class="admin-card ${p.banned ? 'banned-row' : ''}">
+          <div class="ac-head"><b>${esc(u)}</b>${p.banned ? ' <span class="lose">🚫 gesperrt</span>' : ''}</div>
+          <div class="muted small">${esc(p.email)}</div>
+          <div class="ac-stats">⭐ Lvl ${lvl} · ${fmt(p.points || 0)} P · 🪙 ${fmt(p.coins || 0)}</div>
+          <div class="admin-actions">
+            <button class="admin-gift" data-user="${esc(u)}">🪙 Coins</button>
+            <button class="admin-xp" data-user="${esc(u)}">⭐ XP</button>
+            <button class="admin-level" data-user="${esc(u)}">🎚 Level</button>
+            ${res}
+            ${p.banned
+              ? `<button class="admin-unban" data-user="${esc(u)}">✅ Freigeben</button>`
+              : `<button class="admin-ban ghost" data-user="${esc(u)}">🚫 Bannen</button>`}
+          </div>
+        </div>`;
       }).join('')
-    : `<tr><td colspan="4" class="muted">${state.loading ? 'Lädt…' : (state.error || 'Keine Spieler.')}</td></tr>`;
+    : `<p class="muted">${state.loading ? 'Lädt…' : (state.error || 'Keine Spieler.')}</p>`;
 
   return `
     <div class="panel">
@@ -828,12 +830,15 @@ export function renderAdmin(state) {
         <label>Coins<input id="adm-amount" type="number" value="100" /></label>
         <button id="admin-grant" class="build-btn" style="align-self:end">Vergeben</button>
       </div>
+      <div class="booster-bar" style="margin-top:12px">
+        🏗️ <b>Baukosten:</b> ${state.freeBuild ? '<span class="lose">AUS (kostenlos)</span>' : '<span class="win">AN</span>'}
+        <button id="admin-freebuild" class="ghost">${state.freeBuild ? 'Einschalten' : 'Ausschalten (kostenlos bauen)'}</button>
+      </div>
     </div>
     <div class="panel">
       <h3>Spielerliste <span class="muted small">(${players.length})</span>
         <button id="admin-refresh" class="ghost" style="float:right">Aktualisieren</button></h3>
-      <table class="queue"><thead><tr><th>Spieler</th><th>Punkte</th><th>Coins</th><th>Aktionen</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div class="admin-cards">${cards}</div>
     </div>`;
 }
 

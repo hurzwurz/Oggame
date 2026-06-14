@@ -89,3 +89,27 @@ export async function adminSetResources(username, m, c, d, g, ti) {
   });
   if (error) throw error;
 }
+
+/** Admin: eine einzelne Ressource erhöhen/verringern. */
+export async function adminAddResource(username, kind, amount) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { error } = await sb.rpc('admin_add_resource', { target_username: username, kind, amount });
+  if (error) throw error;
+}
+
+/** Globale Einstellung lesen (z. B. 'free_build'). */
+export async function getSetting(key) {
+  const sb = await getClient();
+  if (!sb) return null;
+  const { data } = await sb.from('game_settings').select('value').eq('key', key).maybeSingle();
+  return data ? data.value : null;
+}
+
+/** Admin: globale Einstellung setzen. */
+export async function adminSetSetting(key, value) {
+  const sb = await getClient();
+  if (!sb) throw new Error('Offline');
+  const { error } = await sb.rpc('admin_set_setting', { k: key, v: value });
+  if (error) throw error;
+}

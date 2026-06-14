@@ -118,6 +118,7 @@ async function startOnline(user) {
   await refreshPlayers();
   try { game.coins = await Coins.getCoins(); } catch (e) { console.warn('Coins:', e.message || e); }
   try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
+  try { game.freeBuild = (await Coins.getSetting('free_build')) === 'true'; } catch { /* Standard: an */ }
   try {
     const pr = await Social.getProfile(user.id);
     if (pr) {
@@ -321,7 +322,9 @@ async function refreshAdmin() {
   if (activeTab === 'admin') renderView();
   if (!userInfo || !isAdmin) { adminData.loading = false; return; }
   try {
-    adminData = { online: true, isAdmin: true, players: await Coins.adminListPlayers() };
+    const players = await Coins.adminListPlayers();
+    const freeBuild = (await Coins.getSetting('free_build')) === 'true';
+    adminData = { online: true, isAdmin: true, players, freeBuild };
   } catch (e) {
     adminData = { online: true, isAdmin: true, players: [], error: friendlyError(e) };
   }
@@ -362,12 +365,19 @@ async function doAdmin(btn) {
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-res')) {
-      if (typeof prompt !== 'function') return;
-      const v = prompt(`Ressourcen für ${user} setzen – Metall,Kristall,Deuterium,Gold,Titan:`, '0,0,0,0,0');
-      if (v === null) return;
-      const p = v.split(',').map((x) => parseInt(x.trim(), 10) || 0);
-      await Coins.adminSetResources(user, p[0] || 0, p[1] || 0, p[2] || 0, p[3] || 0, p[4] || 0);
-      toast(`${user}: Ressourcen gesetzt.`, true);
+      const k = btn.dataset.kind;
+      const names = { metal: 'Metall', crystal: 'Kristall', deuterium: 'Deuterium', gold: 'Gold', titan: 'Titan' };
+      const n = askNum(`${names[k] || k} für ${user} (negativ = abziehen):`, 1000);
+      if (n === null) return;
+      await Coins.adminAddResource(user, k, n);
+      toast(`${user}: ${n >= 0 ? '+' : ''}${n} ${names[k] || k}.`, true);
+      return refreshAdmin();
+    }
+    if (btn.id === 'admin-freebuild') {
+      const next = adminData.freeBuild ? 'false' : 'true';
+      await Coins.adminSetSetting('free_build', next);
+      toast(`Baukosten ${next === 'true' ? 'AUS (kostenlos)' : 'AN'}.`, true);
+      if (game) game.freeBuild = next === 'true';
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-ban')) {
@@ -691,7 +701,7 @@ function onViewClick(ev) {
   if (btn.id === 'booster-btn') { doBooster(); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
-  if (btn.id === 'admin-refresh' || btn.classList.contains('admin-gift') ||
+  if (btn.id === 'admin-refresh' || btn.id === 'admin-freebuild' || btn.classList.contains('admin-gift') ||
       btn.classList.contains('admin-xp') || btn.classList.contains('admin-level') ||
       btn.classList.contains('admin-res') ||
       btn.classList.contains('admin-ban') || btn.classList.contains('admin-unban')) {

@@ -132,6 +132,12 @@ export function renderOverview(game) {
   const b2row = (boostActive || q.building2)
     ? `<tr><td>Gebäude 2</td><td>${q.building2 ? game.nameOf(q.building2.id) : '–'}</td><td>${q.building2 ? fmtTime((q.building2.finishAt - now) / 1000) : '–'}</td><td>${b2cancel}</td></tr>`
     : '';
+  // Vorgemerkte Aufträge (Warteschlange) – mit Abbrechen.
+  const pendRows = (list, label, kind) => (list || []).map((o, i) =>
+    `<tr class="queued-row"><td>${label} <span class="muted small">#${i + 1}</span></td><td>${game.nameOf(o.id)}</td><td class="muted">wartet…</td>
+       <td><button class="cancel-build ghost" data-cancel="${kind}" data-index="${i}" title="Abbrechen – 30 % zurück">✖</button></td></tr>`).join('');
+  const buildingQueueRows = pendRows(q.buildingQueue, 'Gebäude', 'buildingQueue');
+  const researchQueueRows = pendRows(q.researchQueue, 'Forschung', 'researchQueue');
   const boosterBar = online
     ? `<div class="booster-bar">${boostActive
         ? `⚡ <b>Booster aktiv</b> – noch ${fmtTime(game.boosterRemaining())} · 2× Tempo + 2. Bauslot`
@@ -164,7 +170,9 @@ export function renderOverview(game) {
             <tbody>
               ${queueRow('Gebäude', q.building, 'building', 'building')}
               ${b2row}
+              ${buildingQueueRows}
               ${queueRow('Forschung', q.research, 'research', 'research')}
+              ${researchQueueRows}
               ${shipyardRows}
             </tbody>
           </table>
@@ -209,7 +217,7 @@ function levelCard(def, level, game, kind) {
       ${inProgressItem
         ? `<div class="build-row"><button class="build-btn building-timer" disabled>⏳ ${fmtTime(remaining)}</button>
            <button class="cancel-build ghost" data-cancel="${kind}" data-slot="${kind === 'building' ? (q.building && q.building.id === def.id ? 'building' : 'building2') : 'research'}" title="Abbrechen – 30 % zurück">✖ Abbrechen</button></div>`
-        : `<button class="build-btn" data-kind="${kind}" data-id="${def.id}" ${disabled ? 'disabled' : ''}>${level === 0 ? 'Bauen' : 'Ausbauen'}</button>`}
+        : `<button class="build-btn" data-kind="${kind}" data-id="${def.id}" ${disabled ? 'disabled' : ''}>${busy ? '➕ Warteschlange' : (level === 0 ? 'Bauen' : 'Ausbauen')}</button>`}
     </div>`;
 }
 
@@ -847,9 +855,11 @@ export function renderAdmin(state) {
             <button class="admin-xp" data-user="${esc(u)}">⭐ XP</button>
             <button class="admin-level" data-user="${esc(u)}">🎚 Level</button>
             ${res}
-            ${p.banned
-              ? `<button class="admin-unban" data-user="${esc(u)}">✅ Freigeben</button>`
-              : `<button class="admin-ban ghost" data-user="${esc(u)}">🚫 Bannen</button>`}
+            ${state.meEmail && p.email === state.meEmail
+              ? `<span class="muted small">👑 Inhaber</span>`
+              : p.banned
+                ? `<button class="admin-unban" data-user="${esc(u)}">✅ Freigeben</button>`
+                : `<button class="admin-ban ghost" data-user="${esc(u)}">🚫 Bannen</button>`}
           </div>
         </div>`;
       }).join('')

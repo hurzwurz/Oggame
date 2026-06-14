@@ -8,12 +8,17 @@
 alter table public.profiles add column if not exists is_banned boolean not null default false;
 
 -- Schutz: is_banned darf nur von Admins geändert werden (kein Selbst-Entbannen).
+-- Zusätzlich: Admins/Inhaber können NIE gesperrt werden.
 create or replace function public.protect_profile_fields()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if new.is_banned is distinct from old.is_banned then
     if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
       new.is_banned := old.is_banned;
+    end if;
+    -- Admin-Accounts bleiben immer entsperrt.
+    if new.is_banned and exists (select 1 from public.game_admins where user_id = new.id) then
+      new.is_banned := false;
     end if;
   end if;
   return new;
@@ -22,12 +27,22 @@ drop trigger if exists profiles_protect on public.profiles;
 create trigger profiles_protect before update on public.profiles
   for each row execute function public.protect_profile_fields();
 
+-- Sicherheitsnetz: alle vorhandenen Admins sofort entsperren.
+update public.profiles set is_banned = false
+  where id in (select user_id from public.game_admins);
+
 -- Admin: Spieler sperren/freigeben (per Spielername).
+-- Ein Admin/Inhaber kann NICHT gesperrt werden (Schutz vor Selbst-Aussperren).
 create or replace function public.admin_set_banned(target_username text, banned boolean)
 returns void language plpgsql security definer set search_path = public as $$
+declare tid uuid;
 begin
   if not exists (select 1 from public.game_admins where user_id = auth.uid()) then
     raise exception 'Keine Admin-Rechte';
+  end if;
+  select id into tid from public.profiles where username = target_username;
+  if banned and exists (select 1 from public.game_admins where user_id = tid) then
+    raise exception 'Admins können nicht gesperrt werden';
   end if;
   update public.profiles set is_banned = banned where username = target_username;
 end $$;

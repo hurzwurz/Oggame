@@ -118,10 +118,14 @@ function startOffline(notice) {
 async function startOnline(user) {
   app.innerHTML = `<div class="login-wrap"><div class="panel login-card"><h2>🚀 NEXARION</h2><p class="muted">Lade dein Imperium…</p></div></div>`;
   await ensureProfile(user);
-  // Gesperrte Accounts blockieren
-  try {
-    if (await Coins.isBanned(user.id)) { app.innerHTML = V.renderBanned(); return; }
-  } catch { /* ignorieren, falls Spalte/Funktion fehlt */ }
+  // Admin/Inhaber zuerst bestimmen – ein Admin kann NIE ausgesperrt werden.
+  try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
+  // Gesperrte Accounts blockieren (Admins ausgenommen).
+  if (!isAdmin) {
+    try {
+      if (await Coins.isBanned(user.id)) { app.innerHTML = V.renderBanned(); return; }
+    } catch { /* ignorieren, falls Spalte/Funktion fehlt */ }
+  }
   const row = await ensureHomePlanet(user.id);
   cloudSaver = makeCloudSaver(row.id, user.id);
   game = new Game({ initialState: buildInitialState(row, user.id), onSave: cloudSaver.onSave });
@@ -130,7 +134,6 @@ async function startOnline(user) {
   game.coins = 0; // Online-Marker (aktiviert Coins-Anzeige/Skip)
   await refreshPlayers();
   try { game.coins = await Coins.getCoins(); } catch (e) { console.warn('Coins:', e.message || e); }
-  try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
   try {
     const god = (await Coins.getSetting('god_build')) === 'true';
     game.freeBuild = god; game.freeTime = god; game.freeQueue = god;
@@ -281,10 +284,13 @@ async function doSkip(cost, kind) {
 function doCancel(btn) {
   if (!confirm('Auftrag abbrechen? Du bekommst nur 30 % der Ressourcen zurück.')) return;
   const what = btn.dataset.cancel;
+  const idx = parseInt(btn.dataset.index, 10) || 0;
   let res;
   if (what === 'building') res = game.cancelBuilding(btn.dataset.slot || 'building');
   else if (what === 'research') res = game.cancelResearch();
-  else if (what === 'shipyard') res = game.cancelShipyard(parseInt(btn.dataset.index, 10) || 0);
+  else if (what === 'shipyard') res = game.cancelShipyard(idx);
+  else if (what === 'buildingQueue') res = game.cancelBuildingQueue(idx);
+  else if (what === 'researchQueue') res = game.cancelResearchQueue(idx);
   else return;
   if (res && res.ok) { toast('Abgebrochen – 30 % zurückerstattet.', true); persistNow(); }
   else toast((res && res.error) || 'Abbruch nicht möglich.', false);
@@ -443,7 +449,7 @@ async function refreshAdmin() {
   try {
     const players = await Coins.adminListPlayers();
     const godBuild = (await Coins.getSetting('god_build')) === 'true';
-    adminData = { online: true, isAdmin: true, players, godBuild };
+    adminData = { online: true, isAdmin: true, players, godBuild, meEmail: userInfo.email };
   } catch (e) {
     adminData = { online: true, isAdmin: true, players: [], error: friendlyError(e) };
   }
@@ -849,7 +855,10 @@ function onViewClick(ev) {
       const amount = input ? parseInt(input.value, 10) || 1 : 1;
       result = game.buildUnits(id, amount, kind);
     }
-    if (result.ok) { toast(`Auftrag erteilt${result.amount ? ` (${result.amount}×)` : ''}.`, true); persistNow(); }
+    if (result.ok) {
+      const msg = result.queued ? 'In die Warteschlange gestellt.' : `Auftrag erteilt${result.amount ? ` (${result.amount}×)` : ''}.`;
+      toast(msg, true); persistNow();
+    }
     else toast(result.error || 'Aktion nicht möglich.', false);
     renderView();
     return;

@@ -532,3 +532,4 @@ button.build-btn.building-timer {
   padding: 6px 10px; cursor: pointer; white-space: nowrap;
 }
 .cancel-build:hover { background: rgba(160,40,40,.30); }
+.queued-row td { opacity: .75; border-top: 1px dashed var(--border); }

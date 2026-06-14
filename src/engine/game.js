@@ -25,7 +25,9 @@ function defaultState() {
     queues: {
       building: null, // { id, finishAt }
       building2: null, // zweiter Gebäude-Slot (nur mit Booster)
+      buildingQueue: [], // vorgemerkte Gebäude-Aufträge [ { id, cost } ] (Kosten bereits bezahlt)
       research: null, // { id, finishAt }
+      researchQueue: [], // vorgemerkte Forschungen [ { id, cost } ]
       shipyard: [], // [ { id, kind, remaining, perUnitSeconds, nextAt } ]
     },
     booster: { until: 0 }, // { until } – aktiv solange until > now
@@ -63,7 +65,9 @@ export class Game {
       research: { ...(saved.research || {}) },
       ships: { ...(saved.ships || {}) },
       defenses: { ...(saved.defenses || {}) },
-      queues: { ...base.queues, ...(saved.queues || {}) },
+      queues: { ...base.queues, ...(saved.queues || {}),
+        buildingQueue: (saved.queues && saved.queues.buildingQueue) || [],
+        researchQueue: (saved.queues && saved.queues.researchQueue) || [] },
       galaxy: saved.galaxy && saved.galaxy.length ? saved.galaxy : base.galaxy,
       fleets: saved.fleets || [],
       reports: saved.reports || [],
@@ -186,11 +190,19 @@ export class Game {
       this._awardXp(this._buildXp(BUILDING_MAP[q.building2.id], lvl));
       q.building2 = null;
     }
+    // Freie Bauslots aus der Warteschlange nachfüllen.
+    this._fillBuildingSlots(now);
 
     if (q.research && now >= q.research.finishAt) {
       const lvl = (this.state.research[q.research.id] = (this.state.research[q.research.id] || 0) + 1);
       this._awardXp(this._buildXp(RESEARCH_MAP[q.research.id], lvl));
       q.research = null;
+    }
+    // Nächste vorgemerkte Forschung starten.
+    if (!q.research && q.researchQueue.length) {
+      const next = q.researchQueue.shift();
+      const seconds = Math.ceil(F.researchTimeSeconds(next.cost, this.state.buildings) * this._buildTimeMult());
+      q.research = { id: next.id, finishAt: now + seconds * 1000 };
     }
 
     // Werft: sequenziell, ein Stück nach dem anderen
@@ -211,6 +223,18 @@ export class Game {
         job.nextAt += job.perUnitSeconds;
       }
     }
+  }
+
+  // Füllt freie Gebäude-Slots aus der Warteschlange (Slot 2 nur mit Booster).
+  _fillBuildingSlots(now) {
+    const q = this.state.queues;
+    const start = (slot) => {
+      const next = q.buildingQueue.shift();
+      const seconds = Math.ceil(F.buildTimeSeconds(next.cost, this.state.buildings) * this._buildTimeMult());
+      q[slot] = { id: next.id, finishAt: now + seconds * 1000 };
+    };
+    if (!q.building && q.buildingQueue.length) start('building');
+    if (this.boosterActive(now) && !q.building2 && q.buildingQueue.length) start('building2');
   }
 
   // --------------------------------------------------------------- Bauaktionen
@@ -264,19 +288,31 @@ export class Game {
   }
 
   /** Versucht, ein Gebäude in Auftrag zu geben. Gibt {ok, error} zurück. */
+  // Zählt laufende + vorgemerkte Ausbaustufen eines Gebäudes (für Folgekosten).
+  _pendingBuilding(id) {
+    const q = this.state.queues;
+    let n = 0;
+    if (q.building && q.building.id === id) n++;
+    if (q.building2 && q.building2.id === id) n++;
+    n += q.buildingQueue.filter((o) => o.id === id).length;
+    return n;
+  }
+
   buildBuilding(id) {
     const def = BUILDING_MAP[id];
     if (!def) return { ok: false, error: 'Unbekanntes Gebäude' };
     if (!F.requirementsMet(def, this.state)) return { ok: false, error: 'Voraussetzungen fehlen' };
-    const level = this.state.buildings[id] || 0;
+    // Folgekosten richtig: aktuelle Stufe + bereits laufende/vorgemerkte Stufen.
+    const level = (this.state.buildings[id] || 0) + this._pendingBuilding(id);
     const cost = F.levelCost(def, level);
-    // Bau-Warteschleife aus (Admin): sofort fertig, kein Slot nötig, unbegrenzt.
+    // Bau-Warteschleife aus (Admin): sofort fertig, kein Slot nötig, unbegrenzt – mit XP.
     if (this.freeQueue) {
       if (!this.freeBuild) {
         if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
         this._spend(cost);
       }
-      this.state.buildings[id] = level + 1;
+      const lvl = (this.state.buildings[id] = (this.state.buildings[id] || 0) + 1);
+      this._awardXp(this._buildXp(def, lvl));
       this.save();
       return { ok: true };
     }
@@ -284,41 +320,64 @@ export class Game {
     let slot = null;
     if (!this.state.queues.building) slot = 'building';
     else if (this.boosterActive() && !this.state.queues.building2) slot = 'building2';
-    else return { ok: false, error: 'Bauschleife belegt' };
+    // Kein Slot frei -> in die Warteschlange (max. 5), statt zu blockieren.
+    if (!slot && this.state.queues.buildingQueue.length >= 5) return { ok: false, error: 'Warteschlange voll (max. 5)' };
     if (!this.freeBuild) {
       if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
       this._spend(cost);
     }
-    const seconds = Math.ceil(F.buildTimeSeconds(cost, this.state.buildings) * this._buildTimeMult());
-    this.state.queues[slot] = { id, finishAt: Date.now() + seconds * 1000 };
+    if (slot) {
+      const seconds = Math.ceil(F.buildTimeSeconds(cost, this.state.buildings) * this._buildTimeMult());
+      this.state.queues[slot] = { id, finishAt: Date.now() + seconds * 1000 };
+    } else {
+      this.state.queues.buildingQueue.push({ id, cost }); // Kosten bereits bezahlt
+    }
     this.save();
-    return { ok: true };
+    return { ok: true, queued: !slot };
   }
 
-  /** Versucht, eine Forschung zu starten. */
+  _pendingResearch(id) {
+    const q = this.state.queues;
+    let n = 0;
+    if (q.research && q.research.id === id) n++;
+    n += q.researchQueue.filter((o) => o.id === id).length;
+    return n;
+  }
+
+  /** Versucht, eine Forschung zu starten (mit Warteschlange). */
   research(id) {
     const def = RESEARCH_MAP[id];
     if (!def) return { ok: false, error: 'Unbekannte Forschung' };
     if ((this.state.buildings.researchLab || 0) < 1)
       return { ok: false, error: 'Forschungslabor benötigt' };
-    if (!this.freeQueue && this.state.queues.research) return { ok: false, error: 'Labor belegt' };
     if (!F.requirementsMet(def, this.state)) return { ok: false, error: 'Voraussetzungen fehlen' };
-    const level = this.state.research[id] || 0;
+    const level = (this.state.research[id] || 0) + this._pendingResearch(id);
     const cost = F.levelCost(def, level);
+    // Bau-Warteschleife aus (Admin): sofort fertig – mit XP.
+    if (this.freeQueue) {
+      if (!this.freeBuild) {
+        if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
+        this._spend(cost);
+      }
+      const lvl = (this.state.research[id] = (this.state.research[id] || 0) + 1);
+      this._awardXp(this._buildXp(def, lvl));
+      this.save();
+      return { ok: true };
+    }
+    const busy = !!this.state.queues.research;
+    if (busy && this.state.queues.researchQueue.length >= 5) return { ok: false, error: 'Warteschlange voll (max. 5)' };
     if (!this.freeBuild) {
       if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
       this._spend(cost);
     }
-    // Bau-Warteschleife aus (Admin): sofort fertig.
-    if (this.freeQueue) {
-      this.state.research[id] = level + 1;
-      this.save();
-      return { ok: true };
+    if (!busy) {
+      const seconds = Math.ceil(F.researchTimeSeconds(cost, this.state.buildings) * this._buildTimeMult());
+      this.state.queues.research = { id, finishAt: Date.now() + seconds * 1000 };
+    } else {
+      this.state.queues.researchQueue.push({ id, cost });
     }
-    const seconds = Math.ceil(F.researchTimeSeconds(cost, this.state.buildings) * this._buildTimeMult());
-    this.state.queues.research = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
-    return { ok: true };
+    return { ok: true, queued: busy };
   }
 
   /** Baut Schiffe oder Verteidigung (kind = 'ship' | 'defense'). */
@@ -397,6 +456,26 @@ export class Game {
     const def = RESEARCH_MAP[q.id];
     if (def && !this.freeBuild) this._refund(F.levelCost(def, this.state.research[q.id] || 0), 0.3);
     this.state.queues.research = null;
+    this.save();
+    return { ok: true };
+  }
+
+  /** Bricht einen vorgemerkten Gebäude-Auftrag ab (Warteschlange). 30 % zurück. */
+  cancelBuildingQueue(index = 0) {
+    const qq = this.state.queues.buildingQueue;
+    if (!qq || !qq[index]) return { ok: false, error: 'Kein Auftrag in der Warteschlange' };
+    if (!this.freeBuild) this._refund(qq[index].cost, 0.3);
+    qq.splice(index, 1);
+    this.save();
+    return { ok: true };
+  }
+
+  /** Bricht eine vorgemerkte Forschung ab (Warteschlange). 30 % zurück. */
+  cancelResearchQueue(index = 0) {
+    const qq = this.state.queues.researchQueue;
+    if (!qq || !qq[index]) return { ok: false, error: 'Kein Auftrag in der Warteschlange' };
+    if (!this.freeBuild) this._refund(qq[index].cost, 0.3);
+    qq.splice(index, 1);
     this.save();
     return { ok: true };
   }

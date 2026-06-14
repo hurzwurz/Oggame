@@ -11,10 +11,10 @@ import { getIcon } from '../data/icons.js';
 
 export const BOOSTER_COST = 100; // Coins für 1 Std Booster
 
-// Bild mit Emoji-Fallback. Sobald eine Datei assets/<folder>/<id>.png existiert,
-// wird sie angezeigt; fehlt sie, bleibt das Emoji sichtbar.
+// Bild mit Emoji-Fallback. Das Bild ist standardmäßig sichtbar (kein onload nötig);
+// nur falls die Datei fehlt, blendet onerror auf das Emoji um.
 export function thumbHtml(folder, id, emoji) {
-  return `<span class="thumb"><img class="thumb-img" src="assets/${folder}/${id}.png" alt="" loading="lazy" onload="this.closest('.thumb').classList.add('hasimg')" onerror="this.remove()"><span class="thumb-emoji">${emoji}</span></span>`;
+  return `<span class="thumb hasimg"><img class="thumb-img" src="assets/${folder}/${id}.png" alt="" loading="lazy" onerror="this.style.display='none';var e=this.parentNode.querySelector('.thumb-emoji');if(e)e.style.display='inline-flex';"><span class="thumb-emoji">${emoji}</span></span>`;
 }
 
 // ------------------------------------------------------------------ Formatierung

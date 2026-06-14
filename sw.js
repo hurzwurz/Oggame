@@ -1,9 +1,8 @@
-// Service Worker für NEXARION (PWA, Offline-Fähigkeit).
-// Strategie: Network-First für eigene GET-Anfragen, Fallback auf Cache.
-// So bleibt die App aktuell (neue Deploys greifen sofort) und funktioniert
-// trotzdem offline. Fremde Hosts (Supabase/CDN) werden nicht angefasst.
+// Service Worker für NEXARION (PWA).
+// WICHTIG: Holt eigene Dateien IMMER frisch vom Server (umgeht den HTTP-Cache),
+// damit neue Deploys sofort ankommen. Cache dient nur als Offline-Fallback.
 
-const CACHE = 'nexarion-v1';
+const CACHE = 'nexarion-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -21,10 +20,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   let url;
   try { url = new URL(req.url); } catch { return; }
-  if (url.origin !== self.location.origin) return; // nur eigene Dateien cachen
+  if (url.origin !== self.location.origin) return; // nur eigene Dateien
 
   event.respondWith(
-    fetch(req)
+    // 'reload' = Browser-HTTP-Cache komplett umgehen -> immer aktuelle Datei
+    fetch(req, { cache: 'reload' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});

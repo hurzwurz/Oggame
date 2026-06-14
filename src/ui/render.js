@@ -180,14 +180,21 @@ function levelCard(def, level, game, kind) {
     kind === 'building'
       ? F.buildTimeSeconds(cost, game.state.buildings)
       : F.researchTimeSeconds(cost, game.state.buildings);
-  const disabled = !met || !afford;
+  const q = game.state.queues;
+  // Wird genau DIESES Objekt gerade gebaut?
+  const inProgressItem = kind === 'building'
+    ? ((q.building && q.building.id === def.id && q.building) || (q.building2 && q.building2.id === def.id && q.building2))
+    : (q.research && q.research.id === def.id && q.research);
   const busy = kind === 'building'
-    ? !!game.state.queues.building && !(game.boosterActive && game.boosterActive() && !game.state.queues.building2)
-    : !!game.state.queues.research;
-  const ready = met && afford && !busy; // jetzt baubar
+    ? !!q.building && !(game.boosterActive && game.boosterActive() && !q.building2)
+    : !!q.research;
+  // Wichtig: NUR fehlende Voraussetzungen/Ressourcen graut aus – nicht "busy".
+  const disabled = !met || !afford;
+  const ready = met && afford && !busy && !inProgressItem; // jetzt baubar
   const effTime = game.boosterActive && game.boosterActive() ? Math.ceil(time / 2) : time;
+  const remaining = inProgressItem ? (inProgressItem.finishAt - Date.now()) / 1000 : 0;
   return `
-    <div class="card ${disabled ? 'locked' : ''} ${ready ? 'ready' : ''}">
+    <div class="card ${disabled && !inProgressItem ? 'locked' : ''} ${ready ? 'ready' : ''} ${inProgressItem ? 'building-now' : ''}">
       <div class="card-head">
         <h4>${thumbHtml(kind === 'research' ? 'research' : 'buildings', def.id, getIcon(def.id, kind))} ${def.name}</h4>
         <span class="level">${ready ? '<span class="ready-tag">● baubar</span> ' : ''}Stufe ${level}</span>
@@ -196,9 +203,9 @@ function levelCard(def, level, game, kind) {
       <div class="cost">${costLine(cost)}</div>
       <div class="meta">⏱ ${fmtTime(effTime)}${effTime !== time ? ' <span class="c-coin">(Booster)</span>' : ''}</div>
       ${reqLine(def, game)}
-      <button class="build-btn" data-kind="${kind}" data-id="${def.id}" ${disabled || busy ? 'disabled' : ''}>
-        ${busy ? 'Beschäftigt' : level === 0 ? 'Bauen' : 'Ausbauen'}
-      </button>
+      ${inProgressItem
+        ? `<button class="build-btn building-timer" disabled>⏳ ${fmtTime(remaining)}</button>`
+        : `<button class="build-btn" data-kind="${kind}" data-id="${def.id}" ${disabled ? 'disabled' : ''}>${level === 0 ? 'Bauen' : 'Ausbauen'}</button>`}
     </div>`;
 }
 

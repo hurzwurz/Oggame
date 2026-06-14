@@ -497,3 +497,11 @@ button.build-btn { background: linear-gradient(180deg, #2aa8ff, #0d7fd6); color:
 
 .rank-me { background: rgba(24,160,255,.12); }
 .rank-me td { font-weight: 700; }
+
+/* In Bau befindlicher Button: Countdown statt ausgegraut */
+button.build-btn.building-timer {
+  background: linear-gradient(180deg, #15323f, #0f2733);
+  color: #7fe3ff; border: 1px solid var(--neon);
+  box-shadow: 0 0 12px rgba(24,160,255,.35); cursor: default; opacity: 1;
+}
+.card.building-now { border-color: var(--neon); box-shadow: 0 0 0 1px var(--neon) inset; }

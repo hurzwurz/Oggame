@@ -59,7 +59,7 @@ function profileState() {
     isAdmin,
   };
 }
-const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports']);
+const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports', 'buildings', 'research']);
 let activeTab = 'overview';
 
 const app = document.getElementById('app');

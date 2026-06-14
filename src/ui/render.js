@@ -884,3 +884,36 @@ export function renderProfile(state) {
       </div>
     </div>`;
 }
+
+// ------------------------------------------------------------------ Rangliste
+
+export function renderRanking(state) {
+  if (!state.online) return `<div class="panel"><p class="muted">Rangliste gibt es nur im Online-Modus (eingeloggt).</p></div>`;
+  if (state.error) return `<div class="panel"><div class="login-error">${state.error}</div></div>`;
+  if (state.loading) return `<div class="panel"><p class="muted">Lädt…</p></div>`;
+
+  const medal = (i) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`);
+
+  const prows = (state.players || []).length
+    ? state.players.map((p, i) => {
+        const lvl = Math.floor(Math.sqrt((p.points || 0) / 100)) + 1;
+        const me = p.owner_name === state.me;
+        return `<tr class="${me ? 'rank-me' : ''}"><td>${medal(i)}</td><td>${esc(p.owner_name)}${me ? ' <span class="win">(du)</span>' : ''}</td><td>⭐ ${lvl}</td><td>${fmt(p.points || 0)}</td></tr>`;
+      }).join('')
+    : '<tr><td colspan="4" class="muted">Noch keine Spieler.</td></tr>';
+
+  const arows = (state.alliances || []).length
+    ? state.alliances.map((a, i) => `<tr><td>${medal(i)}</td><td>[${esc(a.tag)}] ${esc(a.name)}</td><td>${a.members}</td><td>${fmt(a.points)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="muted">Noch keine Allianzen.</td></tr>';
+
+  return `
+    <div class="panel">
+      <h2>🏆 Rangliste</h2>
+      <h3>Top-Spieler</h3>
+      <table class="queue"><thead><tr><th>#</th><th>Spieler</th><th>Level</th><th>Punkte</th></tr></thead><tbody>${prows}</tbody></table>
+    </div>
+    <div class="panel">
+      <h3>Top-Allianzen</h3>
+      <table class="queue"><thead><tr><th>#</th><th>Allianz</th><th>Mitgl.</th><th>Punkte</th></tr></thead><tbody>${arows}</tbody></table>
+    </div>`;
+}

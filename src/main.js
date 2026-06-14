@@ -17,6 +17,7 @@ let cloudSaver = null;
 let players = []; // andere Spieler aus der Galaxie
 let allianceData = { online: false };
 let friendData = { online: false };
+let rankingData = { online: false };
 let isAdmin = false;
 let adminData = { online: false, isAdmin: false, players: [] };
 
@@ -38,6 +39,7 @@ const TABS = {
   galaxy: { label: 'Galaxie', render: (g) => V.renderGalaxy(g, dispatch, players) },
   movement: { label: 'Flotten', render: (g) => V.renderMovements(g) },
   reports: { label: 'Berichte', render: (g) => V.renderReports(g) },
+  ranking: { label: '🏆 Rangliste', render: () => V.renderRanking(rankingData) },
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
@@ -315,6 +317,20 @@ async function processPvpFleets() {
     game.state.fleets = game.state.fleets.filter((f) => !f._done);
     game.save();
   }
+}
+
+async function refreshRanking() {
+  if (!userInfo) { rankingData = { online: false }; if (activeTab === 'ranking') renderView(); return; }
+  rankingData = { online: true, loading: true };
+  if (activeTab === 'ranking') renderView();
+  try {
+    const players = await Social.playerRanking().catch(() => []);
+    const alliances = await Social.allianceRanking().catch(() => []);
+    rankingData = { online: true, players, alliances, me: userInfo.username };
+  } catch (e) {
+    rankingData = { online: true, error: friendlyError(e) };
+  }
+  if (activeTab === 'ranking') renderView();
 }
 
 async function refreshAdmin() {
@@ -682,6 +698,7 @@ async function onTabClick(ev) {
   }
   if (activeTab === 'alliance') await refreshAlliance();
   if (activeTab === 'friends') await refreshFriends();
+  if (activeTab === 'ranking') await refreshRanking();
   if (activeTab === 'admin') await refreshAdmin();
   if (activeTab === 'reports' && userInfo) { await mergeServerReports(); renderView(); }
 }

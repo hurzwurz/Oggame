@@ -193,3 +193,23 @@ export async function allianceRanking() {
   if (error) throw error;
   return data || [];
 }
+
+/** Top-Spieler nach Punkten (aus der öffentlichen Galaxie-Ansicht). */
+export async function playerRanking() {
+  const sb = await need();
+  const { data, error } = await sb
+    .from('galaxy_overview')
+    .select('owner_name, points')
+    .order('points', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  // Pro Spieler nur den höchsten Eintrag (falls mehrere Planeten)
+  const seen = new Set();
+  const out = [];
+  for (const r of data || []) {
+    if (seen.has(r.owner_name)) continue;
+    seen.add(r.owner_name);
+    out.push(r);
+  }
+  return out;
+}

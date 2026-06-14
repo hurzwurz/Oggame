@@ -33,6 +33,7 @@ function defaultState() {
     galaxy: G.generateGalaxy(),
     fleets: [], // unterwegs befindliche Missionen
     reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
+    debris: {}, // Trümmerfelder je Koordinate "g:s:p" -> {metal, crystal}
     fleetSeq: 1,
   };
 }
@@ -63,6 +64,7 @@ export class Game {
       galaxy: saved.galaxy && saved.galaxy.length ? saved.galaxy : base.galaxy,
       fleets: saved.fleets || [],
       reports: saved.reports || [],
+      debris: saved.debris || {},
       fleetSeq: saved.fleetSeq || 1,
       xp: saved.xp || 0,
     };
@@ -377,6 +379,8 @@ export class Game {
 
     if (mission === 'espionage' && !ships.espionageProbe)
       return { ok: false, error: 'Spionage benötigt Spionagesonden' };
+    if (mission === 'recycle' && !ships.recycler)
+      return { ok: false, error: 'Recyceln benötigt Recycler' };
 
     const dist = G.distance(this.state.coords, coords);
     const ft = G.flightTime(dist, ships, this.state.research);
@@ -494,7 +498,36 @@ export class Game {
   _resolveMission(fleet) {
     if (fleet.mission === 'espionage') return this._resolveEspionage(fleet);
     if (fleet.mission === 'expedition') return this._resolveExpedition(fleet);
+    if (fleet.mission === 'recycle') return this._resolveRecycle(fleet);
     return this._resolveAttack(fleet);
+  }
+
+  _debrisKey(coords) { return coords.join(':'); }
+  _addDebris(coords, debris) {
+    if (!this.state.debris) this.state.debris = {};
+    const k = this._debrisKey(coords);
+    const cur = this.state.debris[k] || { metal: 0, crystal: 0 };
+    cur.metal += Math.floor(debris.metal || 0);
+    cur.crystal += Math.floor(debris.crystal || 0);
+    this.state.debris[k] = cur;
+  }
+
+  _resolveRecycle(fleet) {
+    const k = this._debrisKey(fleet.target);
+    const field = (this.state.debris && this.state.debris[k]) || { metal: 0, crystal: 0 };
+    let free = G.cargoCapacity(fleet.ships);
+    const take = (key) => {
+      const amount = Math.min(field[key] || 0, free);
+      fleet.cargo[key] = (fleet.cargo[key] || 0) + amount;
+      field[key] -= amount;
+      free -= amount;
+    };
+    take('metal'); take('crystal');
+    if (this.state.debris) {
+      if ((field.metal || 0) <= 0 && (field.crystal || 0) <= 0) delete this.state.debris[k];
+      else this.state.debris[k] = field;
+    }
+    this._addReport({ type: 'recycle', target: fleet.target, collected: { metal: fleet.cargo.metal || 0, crystal: fleet.cargo.crystal || 0 } });
   }
 
   _resolveEspionage(fleet) {
@@ -606,6 +639,10 @@ export class Game {
       debris: result.debris,
       attackerWiped,
     });
+    // Trümmer am Zielort ablegen (zum Einsammeln per Recycler)
+    if (result.debris && (result.debris.metal || result.debris.crystal)) {
+      this._addDebris(fleet.target, result.debris);
+    }
   }
 
   _returnFleet(fleet) {

@@ -316,7 +316,9 @@ function countList(map, sep = ', ') {
   return entries.map(([id, n]) => `${unitName(id)} ×${fmt(n)}`).join(sep);
 }
 
-const MISSION_LABELS = { attack: 'Angriff', espionage: 'Spionage', expedition: 'Expedition', pvp_attack: '⚔️ PvP-Angriff', pvp_spy: '🛰️ Spionage (Spieler)' };
+const MISSION_LABELS = { attack: 'Angriff', espionage: 'Spionage', expedition: 'Expedition', recycle: '♻️ Recyceln', pvp_attack: '⚔️ PvP-Angriff', pvp_spy: '🛰️ Spionage (Spieler)' };
+// Nur diese Missionen sind im Flotten-Formular wählbar:
+const DISPATCH_MISSIONS = { attack: 'Angriff', espionage: 'Spionage', expedition: 'Expedition', recycle: '♻️ Recyceln' };
 
 // ----------------------------------------------------------------- Galaxie
 
@@ -324,7 +326,7 @@ export function renderGalaxy(game, dispatch, players = []) {
   const coords = [dispatch.g, dispatch.s, dispatch.p];
   const ownedShips = Object.entries(game.state.ships).filter(([, n]) => n > 0);
 
-  const missionOpts = Object.entries(MISSION_LABELS)
+  const missionOpts = Object.entries(DISPATCH_MISSIONS)
     .map(([k, l]) => `<option value="${k}" ${dispatch.mission === k ? 'selected' : ''}>${l}</option>`)
     .join('');
 
@@ -402,7 +404,23 @@ export function renderGalaxy(game, dispatch, players = []) {
     </div>`;
   }
 
-  return form + roster + `<div class="panel">${list}</div>`;
+  // Trümmerfelder (zum Recyceln)
+  const debris = game.state.debris || {};
+  const dkeys = Object.keys(debris).filter((k) => (debris[k].metal || 0) + (debris[k].crystal || 0) > 0);
+  let debrisPanel = '';
+  if (dkeys.length) {
+    const drows = dkeys.map((k) => {
+      const [g, s, p] = k.split(':');
+      const d = debris[k];
+      return `<tr><td>[${g}:${s}:${p}]</td><td class="c-metal">${fmt(d.metal || 0)} M</td><td class="c-crystal">${fmt(d.crystal || 0)} K</td>
+        <td><button class="recycle-target" data-g="${g}" data-s="${s}" data-p="${p}">♻️ Recyceln</button></td></tr>`;
+    }).join('');
+    debrisPanel = `<div class="panel"><h3>♻️ Trümmerfelder</h3>
+      <table class="queue"><thead><tr><th>Koord.</th><th>Metall</th><th>Kristall</th><th></th></tr></thead><tbody>${drows}</tbody></table>
+      <p class="muted small">„Recyceln" setzt das Ziel oben – wähle Recycler-Schiffe und starte die Flotte.</p></div>`;
+  }
+
+  return form + roster + debrisPanel + `<div class="panel">${list}</div>`;
 }
 
 // ------------------------------------------------------------------ Login
@@ -533,6 +551,11 @@ function reportCard(r) {
        Flotte: ${countList(r.fleet)}<br>
        Verteidigung: ${countList(r.defense)}`
     );
+  }
+  if (r.type === 'recycle') {
+    const c = r.collected || {};
+    const has = (c.metal || 0) + (c.crystal || 0) > 0;
+    return card(`♻️ Recycling ${coordFmt(r.target)}`, t, has ? `Eingesammelt: ${costLine({ metal: c.metal, crystal: c.crystal })}` : 'Kein Trümmer gefunden.');
   }
   if (r.type === 'expedition') {
     const map = {

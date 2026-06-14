@@ -753,6 +753,14 @@ function onViewClick(ev) {
     return;
   }
 
+  // Trümmerfeld ins Formular übernehmen (Recyceln)
+  if (btn.classList.contains('recycle-target')) {
+    dispatch.g = +btn.dataset.g; dispatch.s = +btn.dataset.s; dispatch.p = +btn.dataset.p; dispatch.mission = 'recycle';
+    renderView();
+    toast('Ziel gesetzt – Recycler wählen und „Flotte starten".', true);
+    return;
+  }
+
   // Echten Spieler ins Angriffs-Formular übernehmen
   if (btn.classList.contains('attack-player')) {
     dispatch.g = +btn.dataset.g; dispatch.s = +btn.dataset.s; dispatch.p = +btn.dataset.p; dispatch.mission = 'attack';

@@ -43,6 +43,7 @@ const TABS = {
   ranking: { label: '🏆 Rangliste', render: () => V.renderRanking(rankingData) },
   daily: { label: '📅 Battle Pass', render: () => V.renderDaily(dailyData, game) },
   officers: { label: '👥 Mitarbeiter', render: (g) => V.renderOfficers(g) },
+  quests: { label: '🎯 Quests', render: (g) => V.renderQuests(g) },
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
@@ -353,6 +354,10 @@ async function processPvpFleets() {
           target: due.target, winner: res.winner, loot,
         });
         if (Object.values(due.ships).every((n) => n <= 0)) due.lost = true;
+        if (res.winner === 'attacker') {
+          const lt = (loot.metal || 0) + (loot.crystal || 0) + (loot.deuterium || 0);
+          game.recordCombatWin(400 + Math.floor(lt / 30)); // PvP-Siege geben mehr XP
+        }
         try { game.coins = await Coins.getCoins(); } catch { /* optional */ }
         toast(`PvP: ${res.winner === 'attacker' ? 'Sieg!' : res.winner === 'defender' ? 'Niederlage' : 'Unentschieden'}`, res.winner === 'attacker');
       }
@@ -445,6 +450,18 @@ async function doHireOfficer(btn) {
     toast(friendlyError(e), false);
   }
 }
+
+function doClaimQuest(btn) {
+  const res = game.claimQuest(btn.dataset.id);
+  if (!res.ok) { toast(res.error || 'Nicht möglich.', false); return; }
+  persistNow();
+  if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game);
+  const rw = res.reward || {};
+  toast(`🎁 Quest abgeschlossen! +${rw.xp ? fmtNum(rw.xp) + ' XP' : 'Belohnung'}`, true);
+  renderView();
+}
+
+function fmtNum(n) { return (n || 0).toLocaleString('de'); }
 
 function doClaimPlaytime() {
   const res = game.claimPlaytime();
@@ -863,6 +880,7 @@ function onViewClick(ev) {
   if (btn.id === 'claim-playtime') { doClaimPlaytime(); return; }
   if (btn.id === 'buy-speed') { doBuySpeed(); return; }
   if (btn.classList.contains('hire-officer')) { doHireOfficer(btn); return; }
+  if (btn.classList.contains('claim-quest')) { doClaimQuest(btn); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.classList.contains('cancel-build')) { doCancel(btn); return; }

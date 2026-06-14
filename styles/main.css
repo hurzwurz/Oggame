@@ -533,3 +533,7 @@ button.build-btn.building-timer {
 }
 .cancel-build:hover { background: rgba(160,40,40,.30); }
 .queued-row td { opacity: .75; border-top: 1px dashed var(--border); }
+
+/* ===== Quest-Fortschrittsbalken ===== */
+.quest-bar { height: 8px; background: var(--bg2); border: 1px solid var(--border); margin: 8px 0; overflow: hidden; }
+.quest-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #2b8cff, #6fa8d6); }

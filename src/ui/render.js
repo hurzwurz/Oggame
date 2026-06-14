@@ -1054,3 +1054,35 @@ export function renderOfficers(game) {
     </div>
     <div class="cards">${cards}</div>`;
 }
+
+// ---------------------------------------------------------------------- Quests
+export function renderQuests(game) {
+  const list = game.quests ? game.quests() : [];
+  const open = list.filter((q) => !q.claimed);
+  const doneCount = list.filter((q) => q.claimed).length;
+  const card = (q) => {
+    const pct = Math.min(100, Math.round((q.current / q.goal) * 100));
+    const rw = q.reward || {};
+    const rwText = [rw.xp ? `⭐ ${fmt(rw.xp)} XP` : '', rw.metal ? `⛏️ ${fmt(rw.metal)}` : '', rw.crystal ? `💎 ${fmt(rw.crystal)}` : '', rw.deuterium ? `🛢️ ${fmt(rw.deuterium)}` : '']
+      .filter(Boolean).join(' · ');
+    return `<div class="card ${q.claimed ? '' : q.done ? 'ready' : ''}">
+      <div class="card-head">
+        <h4><span class="thumb hasimg" style="font-size:20px">${q.icon || '🎯'}</span> ${q.name}</h4>
+        <span class="level">${fmt(q.current)}/${fmt(q.goal)}</span>
+      </div>
+      <p class="desc">${q.desc}</p>
+      <div class="quest-bar"><span style="width:${pct}%"></span></div>
+      <div class="meta">Belohnung: <b>${rwText}</b></div>
+      ${q.claimed
+        ? `<button class="build-btn" disabled>✅ Abgeholt</button>`
+        : q.done
+          ? `<button class="build-btn claim-quest" data-id="${q.id}">🎁 Belohnung abholen</button>`
+          : `<button class="build-btn" disabled>In Arbeit…</button>`}
+    </div>`;
+  };
+  return `<div class="panel">
+      <h2>🎯 Quests</h2>
+      <p class="muted small">Schließe Aufgaben ab und kassiere XP. Abgeschlossen: <b>${doneCount}/${list.length}</b>.</p>
+    </div>
+    <div class="cards">${open.map(card).join('')}${list.filter((q) => q.claimed).map(card).join('')}</div>`;
+}

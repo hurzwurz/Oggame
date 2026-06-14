@@ -5,10 +5,10 @@ import { RESEARCH_MAP } from '../data/research.js';
 import { SHIP_MAP } from '../data/ships.js';
 import { DEFENSE_MAP } from '../data/defenses.js';
 import { OFFICER_MAP } from '../data/officers.js';
+import { QUESTS } from '../data/quests.js';
 import * as F from './formulas.js';
 
 export const MAX_LEVEL = 150; // Maximale Spielerstufe
-const XP_PER_SECOND = 35; // Erfahrung pro aktiver Spielsekunde -> Level 150 in ~15 Std
 const PLAYTIME_STEP = 7200; // 2 Stunden je Spielzeit-Belohnung
 import { loadGame, saveGame } from './storage.js';
 import { simulateBattle } from './combat.js';
@@ -38,9 +38,11 @@ function defaultState() {
     booster: { until: 0 }, // { until } – aktiv solange until > now
     speed: { until: 0, factor: 0.3 }, // Speed-Gutschein (Bauzeit * factor)
     officers: {}, // angeheuerte Mitarbeiter: id -> Stufe
-    xp: 0, // Erfahrungspunkte (jeder Bau bringt XP)
+    xp: 0, // Erfahrungspunkte (Ausbau, Kämpfe, Quests)
     playtime: 0, // aktive Spielzeit in Sekunden
     playtimeClaimed: 0, // Anzahl bereits abgeholter 2-Stunden-Belohnungen
+    stats: { combatWins: 0, expeditions: 0, fleetsSent: 0, debrisCollected: 0 }, // Zähler für Quests
+    questsClaimed: {}, // abgeschlossene & abgeholte Quests: id -> true
     galaxy: G.generateGalaxy(),
     fleets: [], // unterwegs befindliche Missionen
     reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
@@ -86,6 +88,8 @@ export class Game {
       officers: saved.officers || {},
       playtime: saved.playtime || 0,
       playtimeClaimed: saved.playtimeClaimed || 0,
+      stats: { combatWins: 0, expeditions: 0, fleetsSent: 0, debrisCollected: 0, ...(saved.stats || {}) },
+      questsClaimed: saved.questsClaimed || {},
     };
   }
 
@@ -149,10 +153,44 @@ export class Game {
     this.save();
     return { ok: true, step, metal: pack, xp };
   }
+
+  // ----------------------------------------------------------------- Quests
+  /** Liefert alle Quests mit Fortschritt: [{ id,name,desc,reward,goal,current,done,claimed }]. */
+  quests() {
+    return QUESTS.map((q) => {
+      const current = Math.max(0, Math.floor(q.progress(this)));
+      const claimed = !!this.state.questsClaimed[q.id];
+      return { ...q, current: Math.min(current, q.goal), done: current >= q.goal, claimed };
+    });
+  }
+  /** Holt die Belohnung einer abgeschlossenen Quest ab. */
+  claimQuest(id) {
+    const q = QUESTS.find((x) => x.id === id);
+    if (!q) return { ok: false, error: 'Unbekannte Quest' };
+    if (this.state.questsClaimed[id]) return { ok: false, error: 'Bereits abgeholt' };
+    if (q.progress(this) < q.goal) return { ok: false, error: 'Noch nicht abgeschlossen' };
+    const rw = q.reward || {};
+    if (rw.xp) this._awardXp(rw.xp);
+    if (rw.metal || rw.crystal || rw.deuterium) {
+      const cap = this.capacities();
+      const r = this.state.resources;
+      r.metal = Math.min(cap.metal, r.metal + (rw.metal || 0));
+      r.crystal = Math.min(cap.crystal, r.crystal + (rw.crystal || 0));
+      r.deuterium = Math.min(cap.deuterium, r.deuterium + (rw.deuterium || 0));
+    }
+    this.state.questsClaimed[id] = true;
+    this.save();
+    return { ok: true, reward: rw };
+  }
   _buildXp(def, newLevel) {
-    if (!def) return 5;
+    if (!def) return 10;
     const c = F.levelCost(def, newLevel - 1);
-    return Math.max(5, Math.floor(((c.metal || 0) + (c.crystal || 0) + (c.deuterium || 0)) / 100));
+    return Math.max(10, Math.floor(((c.metal || 0) + (c.crystal || 0) + (c.deuterium || 0)) / 50));
+  }
+  /** Verbucht einen Kampfsieg: Zähler + XP. */
+  recordCombatWin(xp = 300) {
+    this.state.stats.combatWins = (this.state.stats.combatWins || 0) + 1;
+    this._awardXp(xp);
   }
   _unitXp(def) {
     if (!def) return 1;
@@ -239,10 +277,9 @@ export class Game {
     // Deuterium darf nicht unter 0 fallen (Fusion verbraucht es)
     res.deuterium = Math.max(0, Math.min(cap.deuterium, res.deuterium + (prod.deuterium / 3600) * elapsed));
 
-    // Aktive Spielzeit + Spielzeit-XP (Offline-Sprünge auf 2 Min/Tick gedeckelt).
+    // Aktive Spielzeit zählen (für Spielzeit-Belohnungspakete), gedeckelt gegen Offline-Sprünge.
     const active = Math.min(elapsed, 120);
     this.state.playtime = (this.state.playtime || 0) + active;
-    if (this.level() < MAX_LEVEL) this._awardXp(active * XP_PER_SECOND);
 
     this._processQueues(now);
     this._processFleets(now);
@@ -649,6 +686,7 @@ export class Game {
       arriveAt: now + ft * 1000,
       returnAt: now + (ft * 2 + holdSeconds) * 1000,
     });
+    this.state.stats.fleetsSent = (this.state.stats.fleetsSent || 0) + 1;
     this.save();
     return { ok: true };
   }
@@ -781,6 +819,8 @@ export class Game {
   }
 
   _resolveExpedition(fleet) {
+    this.state.stats.expeditions = (this.state.stats.expeditions || 0) + 1;
+    this._awardXp(150); // Grund-XP für jede abgeschlossene Expedition
     const rng = Math.random();
     const sizeFactor = Object.values(fleet.ships).reduce((a, b) => a + b, 0);
     if (rng < 0.1) {
@@ -858,6 +898,12 @@ export class Game {
     }
 
     if (attackerWiped) fleet.lost = true;
+
+    // XP für gewonnene Kämpfe (skaliert mit Beute & Kampfdauer).
+    if (result.winner === 'attacker' && !attackerWiped) {
+      const lootTotal = (loot.metal || 0) + (loot.crystal || 0) + (loot.deuterium || 0);
+      this.recordCombatWin(200 + Math.floor(lootTotal / 40) + (result.rounds || 1) * 20);
+    }
 
     this._addReport({
       type: 'attack',

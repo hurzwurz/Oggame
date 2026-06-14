@@ -74,6 +74,15 @@ window.addEventListener('beforeinstallprompt', (e) => {
   if (btn) btn.hidden = false;
 });
 
+// Beim Zurückkehren in die App: Stand frisch vom Server holen (DB ist maßgeblich).
+let lastReload = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && userInfo && Date.now() - lastReload > 4000) {
+    lastReload = Date.now();
+    reloadFromServer();
+  }
+});
+
 // =================================================================== Bootstrap
 
 async function boot() {
@@ -134,6 +143,38 @@ async function startOnline(user) {
   startGameUI();
   // Bei Logout/Token-Verlust zurück zum Login.
   onAuthChange((u) => { if (!u) location.reload(); });
+}
+
+// Schreibt den aktuellen Stand SOFORT in die DB (statt erst nach Debounce).
+function persistNow() {
+  if (cloudSaver) cloudSaver.flush();
+}
+
+// Holt den Planeten frisch vom Server und übernimmt ihn (DB ist maßgeblich).
+// Fleets/Berichte/Trümmer bleiben lokal.
+async function reloadFromServer() {
+  if (!userInfo || !game) return;
+  try {
+    const row = await ensureHomePlanet(userInfo.id);
+    const s = game.state;
+    s.planetName = row.name;
+    s.resources = { metal: 0, crystal: 0, deuterium: 0, gold: 0, titan: 0, ...(row.resources || {}) };
+    s.buildings = row.buildings || {};
+    s.research = row.research || {};
+    s.ships = row.ships || {};
+    s.defenses = row.defenses || {};
+    s.queues = row.queues && Array.isArray(row.queues.shipyard)
+      ? row.queues : { building: null, building2: null, research: null, shipyard: [] };
+    if (!('building2' in s.queues)) s.queues.building2 = null;
+    s.lastTick = Date.parse(row.last_update) || Date.now();
+    game.tick(); // Offline-Produktion nachholen
+    try { game.coins = await Coins.getCoins(); } catch { /* optional */ }
+    try { const pr = await Social.getProfile(userInfo.id); if (pr) s.xp = Math.max(s.xp || 0, pr.points || 0); } catch { /* optional */ }
+    if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game);
+    renderView();
+  } catch (e) {
+    console.warn('Server-Reload:', e.message || e);
+  }
 }
 
 async function refreshPlayers() {
@@ -211,6 +252,7 @@ async function doBooster() {
   try {
     game.coins = await Coins.spendCoins(V.BOOSTER_COST);
     game.activateBooster(1);
+    persistNow();
     toast('Booster aktiviert: 2× Tempo + 2. Bauslot für 1 Std!', true);
     renderView();
   } catch (e) {
@@ -223,6 +265,7 @@ async function doSkip(cost, kind) {
     game.coins = await Coins.spendCoins(cost);
     if (kind === 'building') game.skipBuilding();
     else if (kind === 'research') game.skipResearch();
+    persistNow();
     toast('Sofort fertiggestellt.', true);
     renderView();
   } catch (e) {
@@ -375,7 +418,7 @@ async function doAdmin(btn) {
       const n = askNum(`XP/Punkte für ${user} setzen auf:`, 0);
       if (n === null) return;
       await Coins.adminSetPoints(user, n);
-      if (isSelf && game) { game.state.xp = Math.max(0, n); game.save(); syncTopbar(); }
+      if (isSelf && game) { game.state.xp = Math.max(0, n); game.save(); persistNow(); syncTopbar(); }
       toast(`${user}: XP gesetzt auf ${n}.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
@@ -383,7 +426,7 @@ async function doAdmin(btn) {
       const n = askNum(`Level für ${user} setzen auf:`, 1);
       if (n === null) return;
       await Coins.adminSetLevel(user, n);
-      if (isSelf && game) { game.state.xp = 100 * Math.pow(Math.max(1, n) - 1, 2); game.save(); syncTopbar(); }
+      if (isSelf && game) { game.state.xp = 100 * Math.pow(Math.max(1, n) - 1, 2); game.save(); persistNow(); syncTopbar(); }
       toast(`${user}: Level ${n} gesetzt.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
@@ -393,7 +436,7 @@ async function doAdmin(btn) {
       const n = askNum(`${names[k] || k} für ${user} (negativ = abziehen):`, 1000);
       if (n === null) return;
       await Coins.adminAddResource(user, k, n);
-      if (isSelf && game) { game.state.resources[k] = Math.max(0, (game.state.resources[k] || 0) + n); game.save(); syncTopbar(); }
+      if (isSelf && game) { game.state.resources[k] = Math.max(0, (game.state.resources[k] || 0) + n); game.save(); persistNow(); syncTopbar(); }
       toast(`${user}: ${n >= 0 ? '+' : ''}${n} ${names[k] || k}.${isSelf ? '' : ' (Spieler muss neu laden)'}`, true);
       return refreshAdmin();
     }
@@ -750,7 +793,7 @@ function onViewClick(ev) {
       const amount = input ? parseInt(input.value, 10) || 1 : 1;
       result = game.buildUnits(id, amount, kind);
     }
-    if (result.ok) toast(`Auftrag erteilt${result.amount ? ` (${result.amount}×)` : ''}.`, true);
+    if (result.ok) { toast(`Auftrag erteilt${result.amount ? ` (${result.amount}×)` : ''}.`, true); persistNow(); }
     else toast(result.error || 'Aktion nicht möglich.', false);
     renderView();
     return;
@@ -799,7 +842,7 @@ function onViewClick(ev) {
       return;
     }
     const res = game.sendFleet(mission, coords, ships, cargo);
-    if (res.ok) { toast('Flotte gestartet.', true); activeTab = 'movement'; renderTabs(); }
+    if (res.ok) { toast('Flotte gestartet.', true); activeTab = 'movement'; renderTabs(); persistNow(); }
     else toast(res.error || 'Start nicht möglich.', false);
     renderView();
     return;
@@ -808,6 +851,7 @@ function onViewClick(ev) {
   if (btn.classList.contains('recall')) {
     game.recallFleet(+btn.dataset.id);
     toast('Flotte kehrt um.', true);
+    persistNow();
     renderView();
     return;
   }

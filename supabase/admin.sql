@@ -139,3 +139,6 @@ begin
     on conflict (key) do update set value = excluded.value;
 end $$;
 grant execute on function public.admin_set_setting(text, text) to authenticated;
+
+-- Standardwert für "Bauzeit aus" (sofortiger Bau)
+insert into public.game_settings(key, value) values ('instant_build', 'false') on conflict do nothing;

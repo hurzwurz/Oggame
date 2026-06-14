@@ -481,6 +481,9 @@ begin
 end $$;
 grant execute on function public.admin_set_setting(text, text) to authenticated;
 
+-- Standardwert für "Bauzeit aus" (sofortiger Bau)
+insert into public.game_settings(key, value) values ('instant_build', 'false') on conflict do nothing;
+
 -- ## 5) PVP MIT FLUGZEIT + SPIONAGE ##
 -- ============================================================================
 --  NEXARION – PvP mit Flugzeit: Auflösung bei Ankunft + Spionage

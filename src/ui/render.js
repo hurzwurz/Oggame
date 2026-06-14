@@ -862,7 +862,11 @@ export function renderAdmin(state) {
       </div>
       <div class="booster-bar" style="margin-top:12px">
         🏗️ <b>Baukosten:</b> ${state.freeBuild ? '<span class="lose">AUS (kostenlos)</span>' : '<span class="win">AN</span>'}
-        <button id="admin-freebuild" class="ghost">${state.freeBuild ? 'Einschalten' : 'Ausschalten (kostenlos bauen)'}</button>
+        <button id="admin-freebuild" class="ghost">${state.freeBuild ? 'Einschalten' : 'Ausschalten'}</button>
+      </div>
+      <div class="booster-bar">
+        ⏱️ <b>Bauzeit:</b> ${state.instantBuild ? '<span class="lose">AUS (sofort fertig)</span>' : '<span class="win">AN</span>'}
+        <button id="admin-instant" class="ghost">${state.instantBuild ? 'Einschalten' : 'Ausschalten'}</button>
       </div>
     </div>
     <div class="panel">

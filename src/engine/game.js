@@ -43,6 +43,7 @@ export class Game {
     // Speicher-Callback: online -> Cloud, sonst localStorage.
     this._onSave = options.onSave || ((state) => saveGame(state));
     this.freeBuild = false; // globaler Admin-Schalter: Baukosten aus
+    this.freeTime = false; // globaler Admin-Schalter: Bauzeit aus (sofort fertig)
     const source = options.initialState || loadGame();
     this.state = source ? this._migrate(source) : defaultState();
     // Offline-Fortschritt nachholen
@@ -250,6 +251,7 @@ export class Game {
     }
     let seconds = F.buildTimeSeconds(cost, this.state.buildings);
     if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
+    if (this.freeTime) seconds = 0;
     this.state.queues[slot] = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
     return { ok: true };
@@ -271,6 +273,7 @@ export class Game {
     }
     let seconds = F.researchTimeSeconds(cost, this.state.buildings);
     if (this.boosterActive()) seconds = Math.ceil(seconds / 2);
+    if (this.freeTime) seconds = 0;
     this.state.queues.research = { id, finishAt: Date.now() + seconds * 1000 };
     this.save();
     return { ok: true };
@@ -303,7 +306,7 @@ export class Game {
       this._spend(F.unitCost(def, amount));
     }
 
-    const perUnitSeconds = F.buildTimeSeconds(F.unitCost(def, 1), this.state.buildings);
+    const perUnitSeconds = this.freeTime ? 0 : F.buildTimeSeconds(F.unitCost(def, 1), this.state.buildings);
     const q = this.state.queues.shipyard;
     const startNow = q.length === 0;
     q.push({

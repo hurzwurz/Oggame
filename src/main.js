@@ -121,6 +121,7 @@ async function startOnline(user) {
   try { game.coins = await Coins.getCoins(); } catch (e) { console.warn('Coins:', e.message || e); }
   try { isAdmin = await Coins.amIAdmin(); } catch { isAdmin = false; }
   try { game.freeBuild = (await Coins.getSetting('free_build')) === 'true'; } catch { /* Standard: an */ }
+  try { game.freeTime = (await Coins.getSetting('instant_build')) === 'true'; } catch { /* Standard: an */ }
   try {
     const pr = await Social.getProfile(user.id);
     if (pr) {
@@ -340,7 +341,8 @@ async function refreshAdmin() {
   try {
     const players = await Coins.adminListPlayers();
     const freeBuild = (await Coins.getSetting('free_build')) === 'true';
-    adminData = { online: true, isAdmin: true, players, freeBuild };
+    const instantBuild = (await Coins.getSetting('instant_build')) === 'true';
+    adminData = { online: true, isAdmin: true, players, freeBuild, instantBuild };
   } catch (e) {
     adminData = { online: true, isAdmin: true, players: [], error: friendlyError(e) };
   }
@@ -400,6 +402,13 @@ async function doAdmin(btn) {
       await Coins.adminSetSetting('free_build', next);
       toast(`Baukosten ${next === 'true' ? 'AUS (kostenlos)' : 'AN'}.`, true);
       if (game) game.freeBuild = next === 'true';
+      return refreshAdmin();
+    }
+    if (btn.id === 'admin-instant') {
+      const next = adminData.instantBuild ? 'false' : 'true';
+      await Coins.adminSetSetting('instant_build', next);
+      toast(`Bauzeit ${next === 'true' ? 'AUS (sofort fertig)' : 'AN'}.`, true);
+      if (game) game.freeTime = next === 'true';
       return refreshAdmin();
     }
     if (btn.classList.contains('admin-ban')) {
@@ -724,7 +733,7 @@ function onViewClick(ev) {
   if (btn.id === 'booster-btn') { doBooster(); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
-  if (btn.id === 'admin-refresh' || btn.id === 'admin-freebuild' || btn.classList.contains('admin-gift') ||
+  if (btn.id === 'admin-refresh' || btn.id === 'admin-freebuild' || btn.id === 'admin-instant' || btn.classList.contains('admin-gift') ||
       btn.classList.contains('admin-xp') || btn.classList.contains('admin-level') ||
       btn.classList.contains('admin-res') ||
       btn.classList.contains('admin-ban') || btn.classList.contains('admin-unban')) {

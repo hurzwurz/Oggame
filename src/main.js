@@ -42,6 +42,7 @@ const TABS = {
   reports: { label: 'Berichte', render: (g) => V.renderReports(g) },
   ranking: { label: '🏆 Rangliste', render: () => V.renderRanking(rankingData) },
   daily: { label: '📅 Battle Pass', render: () => V.renderDaily(dailyData, game) },
+  officers: { label: '👥 Mitarbeiter', render: (g) => V.renderOfficers(g) },
   alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
   friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
@@ -427,6 +428,31 @@ async function doClaimDaily() {
   } catch (e) {
     toast(friendlyError(e), false);
   }
+}
+
+async function doHireOfficer(btn) {
+  const id = btn.dataset.id;
+  const cost = parseInt(btn.dataset.cost, 10) || 0;
+  try {
+    game.coins = await Coins.spendCoins(cost);
+    const res = game.upgradeOfficer(id);
+    if (!res.ok) { toast(res.error || 'Nicht möglich.', false); return; }
+    persistNow();
+    if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game);
+    toast(`Mitarbeiter angeheuert (Stufe ${res.level}).`, true);
+    renderView();
+  } catch (e) {
+    toast(friendlyError(e), false);
+  }
+}
+
+function doClaimPlaytime() {
+  const res = game.claimPlaytime();
+  if (!res.ok) { toast(res.error || 'Noch nicht bereit.', false); return; }
+  persistNow();
+  if (topbarEl) topbarEl.innerHTML = V.renderTopbar(game);
+  toast(`🎁 Spielzeit-Paket ${res.step}: +${res.metal.toLocaleString('de')} Metall & XP!`, true);
+  renderView();
 }
 
 async function doBuySpeed() {
@@ -834,7 +860,9 @@ function onViewClick(ev) {
   if (btn.id === 'pf-logout') { doLogout(); return; }
   if (btn.id === 'booster-btn') { doBooster(); return; }
   if (btn.id === 'claim-daily') { doClaimDaily(); return; }
+  if (btn.id === 'claim-playtime') { doClaimPlaytime(); return; }
   if (btn.id === 'buy-speed') { doBuySpeed(); return; }
+  if (btn.classList.contains('hire-officer')) { doHireOfficer(btn); return; }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.classList.contains('cancel-build')) { doCancel(btn); return; }

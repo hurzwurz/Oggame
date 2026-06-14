@@ -4,6 +4,7 @@ import { BUILDINGS, BUILDING_MAP } from '../data/buildings.js';
 import { RESEARCH, RESEARCH_MAP } from '../data/research.js';
 import { SHIPS, SHIP_MAP, SHIP_CLASSES } from '../data/ships.js';
 import { DEFENSES, DEFENSE_MAP } from '../data/defenses.js';
+import { OFFICERS, officerCost } from '../data/officers.js';
 import * as F from '../engine/formulas.js';
 import * as G from '../data/galaxy.js';
 import { getIcon } from '../data/icons.js';
@@ -70,8 +71,8 @@ export function renderTopbar(game) {
   const lv = game.xpInfo ? game.xpInfo() : { level: 1, into: 0, need: 100 };
   const lvCell = `<div class="res c-xp">
       <span class="res-label">⭐ Level</span>
-      <span class="res-val">${lv.level}</span>
-      <span class="res-rate">XP ${fmt(lv.into)}/${fmt(lv.need)}</span>
+      <span class="res-val">${lv.level} / 150</span>
+      <span class="res-rate">${lv.max ? 'MAX erreicht 🏆' : `XP ${fmt(lv.into)}/${fmt(lv.need)}`}</span>
     </div>`;
   return (
     lvCell +
@@ -104,13 +105,14 @@ export function renderOverview(game) {
   const now = Date.now();
 
   const online = typeof game.coins === 'number';
+  const thumbFor = (id, kind) => thumbHtml(kind === 'research' ? 'research' : 'buildings', id, getIcon(id, kind));
   const queueRow = (label, item, kind, slot) => {
     if (!item) return `<tr><td>${label}</td><td>–</td><td>–</td><td></td></tr>`;
     const remaining = (item.finishAt - now) / 1000;
     const cost = Math.max(1, Math.ceil(remaining / 300));
     const skip = online ? `<button class="skip" data-kind="${kind}" data-cost="${cost}">⏩ ${cost} 🪙</button>` : '';
     const cancel = `<button class="cancel-build ghost" data-cancel="${kind}" data-slot="${slot || kind}" title="Abbrechen – 30 % zurück">✖</button>`;
-    return `<tr><td>${label}</td><td>${game.nameOf(item.id)}</td><td>${fmtTime(remaining)}</td><td>${skip} ${cancel}</td></tr>`;
+    return `<tr><td>${label}</td><td>${thumbFor(item.id, kind)} ${game.nameOf(item.id)}</td><td>${fmtTime(remaining)}</td><td>${skip} ${cancel}</td></tr>`;
   };
 
   let shipyardRows = '';
@@ -123,18 +125,19 @@ export function renderOverview(game) {
           ? (job.nextAt - now) / 1000 + (job.remaining - 1) * job.perUnitSeconds
           : job.remaining * job.perUnitSeconds;
       const cancel = `<button class="cancel-build ghost" data-cancel="shipyard" data-index="${i}" title="Abbrechen – 30 % zurück">✖</button>`;
-      shipyardRows += `<tr><td>Werft</td><td>${game.nameOf(job.id)} ×${job.remaining}</td><td>${fmtTime(remaining)}</td><td>${cancel}</td></tr>`;
+      const thumb = thumbHtml(DEFENSE_MAP[job.id] ? 'defenses' : 'ships', job.id, getIcon(job.id, job.kind));
+      shipyardRows += `<tr><td>Werft</td><td>${thumb} ${game.nameOf(job.id)} ×${job.remaining}</td><td>${fmtTime(remaining)}</td><td>${cancel}</td></tr>`;
     });
   }
 
   const boostActive = game.boosterActive && game.boosterActive();
   const b2cancel = q.building2 ? `<button class="cancel-build ghost" data-cancel="building" data-slot="building2" title="Abbrechen – 30 % zurück">✖</button>` : '';
   const b2row = (boostActive || q.building2)
-    ? `<tr><td>Gebäude 2</td><td>${q.building2 ? game.nameOf(q.building2.id) : '–'}</td><td>${q.building2 ? fmtTime((q.building2.finishAt - now) / 1000) : '–'}</td><td>${b2cancel}</td></tr>`
+    ? `<tr><td>Gebäude 2</td><td>${q.building2 ? `${thumbFor(q.building2.id, 'building')} ${game.nameOf(q.building2.id)}` : '–'}</td><td>${q.building2 ? fmtTime((q.building2.finishAt - now) / 1000) : '–'}</td><td>${b2cancel}</td></tr>`
     : '';
   // Vorgemerkte Aufträge (Warteschlange) – mit Abbrechen.
   const pendRows = (list, label, kind) => (list || []).map((o, i) =>
-    `<tr class="queued-row"><td>${label} <span class="muted small">#${i + 1}</span></td><td>${game.nameOf(o.id)}</td><td class="muted">wartet…</td>
+    `<tr class="queued-row"><td>${label} <span class="muted small">#${i + 1}</span></td><td>${thumbFor(o.id, kind === 'researchQueue' ? 'research' : 'building')} ${game.nameOf(o.id)}</td><td class="muted">wartet…</td>
        <td><button class="cancel-build ghost" data-cancel="${kind}" data-index="${i}" title="Abbrechen – 30 % zurück">✖</button></td></tr>`).join('');
   const buildingQueueRows = pendRows(q.buildingQueue, 'Gebäude', 'buildingQueue');
   const researchQueueRows = pendRows(q.researchQueue, 'Forschung', 'researchQueue');
@@ -146,7 +149,7 @@ export function renderOverview(game) {
 
   return `
     <div class="panel">
-      <h2>${game.state.planetName}</h2>
+      <h2>${thumbHtml('world', 'planet', '🪐')} ${game.state.planetName}</h2>
       ${boosterBar}
       <div class="grid2">
         <div>
@@ -978,6 +981,25 @@ export function renderDaily(state, game) {
       <div class="bp-d">Tag ${i}</div><div class="muted small">${50 * i} 🪙</div></div>`;
   }
   const speedActive = game && game.speedActive && game.speedActive();
+  // Spielzeit-Belohnung (Zyklus 2/4/6/8 Std)
+  const pt = game && game.playtimeInfo ? game.playtimeInfo() : null;
+  let playtimePanel = '';
+  if (pt) {
+    const total = pt.total;
+    const remain = Math.max(0, pt.nextAt - total);
+    const cycle = [1, 2, 3, 4].map((s) =>
+      `<div class="bp-day ${pt.step === s ? 'done' : ''}">
+        <div class="bp-d">${s * 2} Std</div><div class="muted small">Paket ${s}</div></div>`).join('');
+    playtimePanel = `
+    <div class="panel">
+      <h3>⏳ Spielzeit-Belohnung</h3>
+      <p class="muted small">Aktive Spielzeit: <b>${fmtTime(total)}</b> · alle 2 Std ein Belohnungspaket (Ressourcen + XP), Zyklus 2/4/6/8 Std.</p>
+      <div class="bp-grid">${cycle}</div>
+      ${pt.ready
+        ? `<button id="claim-playtime" class="build-btn" style="margin-top:12px">🎁 Spielzeit-Paket ${pt.step} abholen</button>`
+        : `<p class="muted" style="margin-top:10px">Nächstes Paket in <b>${fmtTime(remain)}</b> aktiver Spielzeit.</p>`}
+    </div>`;
+  }
   return `
     <div class="panel">
       <h2>📅 Battle Pass</h2>
@@ -987,6 +1009,7 @@ export function renderDaily(state, game) {
         ? `<button id="claim-daily" class="build-btn" style="margin-top:14px">🎁 Tagesbelohnung abholen</button>`
         : `<p class="muted" style="margin-top:10px">Heute schon abgeholt – komm morgen wieder für mehr! ✅</p>`}
     </div>
+    ${playtimePanel}
     <div class="panel">
       <h3>⚡ Gutscheine</h3>
       <div class="booster-bar">
@@ -996,4 +1019,38 @@ export function renderDaily(state, game) {
           : `<button id="buy-speed" class="build-btn">Aktivieren (${SPEED_COST} 🪙)</button>`}
       </div>
     </div>`;
+}
+
+// ------------------------------------------------------------------ Mitarbeiter
+export function renderOfficers(game) {
+  const online = typeof game.coins === 'number';
+  const coins = online ? (game.coins || 0) : 0;
+  const cards = OFFICERS.map((o) => {
+    const lvl = game.officerLevel(o.id);
+    const maxed = lvl >= o.max;
+    const cost = maxed ? 0 : officerCost(o, lvl);
+    const afford = coins >= cost;
+    // Aktueller Effekt-Text
+    const eff = o.effect === 'queue' ? `+${lvl} Warteschlangen-Plätze`
+      : o.effect === 'speed' ? `-${Math.round(o.per * lvl * 100)} % Bauzeit`
+      : `+${Math.round(o.per * lvl * 100)} % ${o.effect === 'storage' ? 'Lager' : o.effect === 'mining' ? 'Metall/Kristall' : 'Produktion'}`;
+    return `<div class="card ${maxed ? 'ready' : ''}">
+      <div class="card-head">
+        <h4><span class="thumb hasimg" style="font-size:20px">${o.icon}</span> ${o.name}</h4>
+        <span class="level">Stufe ${lvl}/${o.max}</span>
+      </div>
+      <p class="desc">${o.desc}</p>
+      <div class="meta">Aktuell: <b>${lvl > 0 ? eff : '—'}</b></div>
+      ${maxed
+        ? `<button class="build-btn" disabled>Maximale Stufe</button>`
+        : `<button class="build-btn hire-officer" data-id="${o.id}" data-cost="${cost}" ${online && afford ? '' : 'disabled'}>
+             ${online ? `Anheuern (${fmt(cost)} 🪙)` : 'Nur online'}
+           </button>`}
+    </div>`;
+  }).join('');
+  return `<div class="panel">
+      <h2>👥 Mitarbeiter</h2>
+      <p class="muted small">Heuere Spezialisten mit Coins an (aus Kämpfen verdient). Jede Stufe verstärkt deinen Bonus dauerhaft.</p>
+    </div>
+    <div class="cards">${cards}</div>`;
 }

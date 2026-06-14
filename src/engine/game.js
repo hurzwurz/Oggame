@@ -4,7 +4,12 @@ import { BUILDING_MAP } from '../data/buildings.js';
 import { RESEARCH_MAP } from '../data/research.js';
 import { SHIP_MAP } from '../data/ships.js';
 import { DEFENSE_MAP } from '../data/defenses.js';
+import { OFFICER_MAP } from '../data/officers.js';
 import * as F from './formulas.js';
+
+export const MAX_LEVEL = 150; // Maximale Spielerstufe
+const XP_PER_SECOND = 35; // Erfahrung pro aktiver Spielsekunde -> Level 150 in ~15 Std
+const PLAYTIME_STEP = 7200; // 2 Stunden je Spielzeit-Belohnung
 import { loadGame, saveGame } from './storage.js';
 import { simulateBattle } from './combat.js';
 import * as G from '../data/galaxy.js';
@@ -32,7 +37,10 @@ function defaultState() {
     },
     booster: { until: 0 }, // { until } – aktiv solange until > now
     speed: { until: 0, factor: 0.3 }, // Speed-Gutschein (Bauzeit * factor)
+    officers: {}, // angeheuerte Mitarbeiter: id -> Stufe
     xp: 0, // Erfahrungspunkte (jeder Bau bringt XP)
+    playtime: 0, // aktive Spielzeit in Sekunden
+    playtimeClaimed: 0, // Anzahl bereits abgeholter 2-Stunden-Belohnungen
     galaxy: G.generateGalaxy(),
     fleets: [], // unterwegs befindliche Missionen
     reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
@@ -75,20 +83,71 @@ export class Game {
       fleetSeq: saved.fleetSeq || 1,
       xp: saved.xp || 0,
       speed: saved.speed || { until: 0, factor: 0.3 },
+      officers: saved.officers || {},
+      playtime: saved.playtime || 0,
+      playtimeClaimed: saved.playtimeClaimed || 0,
     };
   }
 
   // -------------------------------------------------------------------- Level/XP
   _awardXp(n) { this.state.xp = (this.state.xp || 0) + Math.max(0, Math.floor(n)); }
-  /** Aktuelles Level (wächst mit der Wurzel der XP). */
-  level() { return Math.floor(Math.sqrt((this.state.xp || 0) / 100)) + 1; }
-  /** Fortschritt zum nächsten Level: { level, into, need, xp }. */
+  /** Aktuelles Level (wächst mit der Wurzel der XP), gedeckelt bei MAX_LEVEL. */
+  level() { return Math.min(MAX_LEVEL, Math.floor(Math.sqrt((this.state.xp || 0) / 100)) + 1); }
+  /** Fortschritt zum nächsten Level: { level, into, need, xp, max }. */
   xpInfo() {
     const xp = this.state.xp || 0;
     const lvl = this.level();
+    if (lvl >= MAX_LEVEL) return { level: MAX_LEVEL, xp, into: 1, need: 1, max: true };
     const base = 100 * Math.pow(lvl - 1, 2); // XP-Schwelle aktuelles Level
     const next = 100 * Math.pow(lvl, 2);     // XP-Schwelle nächstes Level
     return { level: lvl, xp, into: Math.floor(xp - base), need: Math.floor(next - base) };
+  }
+
+  // -------------------------------------------------------------- Mitarbeiter
+  officerLevel(id) { return this.state.officers[id] || 0; }
+  /** Hebt einen Mitarbeiter um eine Stufe (Coins zahlt der Aufrufer). */
+  upgradeOfficer(id) {
+    const def = OFFICER_MAP[id];
+    if (!def) return { ok: false, error: 'Unbekannter Mitarbeiter' };
+    const lvl = this.officerLevel(id);
+    if (lvl >= def.max) return { ok: false, error: 'Maximale Stufe erreicht' };
+    this.state.officers[id] = lvl + 1;
+    this.save();
+    return { ok: true, level: lvl + 1 };
+  }
+  _storageMult() { const d = OFFICER_MAP.quartermaster; return 1 + d.per * this.officerLevel('quartermaster'); }
+  _prodMult() { const d = OFFICER_MAP.engineer; return 1 + d.per * this.officerLevel('engineer'); }
+  _miningMult() { const d = OFFICER_MAP.geologist; return 1 + d.per * this.officerLevel('geologist'); }
+  _speedOfficerMult() { const d = OFFICER_MAP.commander; return Math.max(0.1, 1 - d.per * this.officerLevel('commander')); }
+  /** Maximale Länge der Bau-/Forschungs-Warteschlange (Bauleiter erhöht sie). */
+  queueLimit() { return 5 + this.officerLevel('buildMaster'); }
+
+  // ------------------------------------------------------------ Spielzeit
+  /** Belohnungs-Status für Spielzeit: { step, next, ready }. Zyklus 2/4/6/8 h. */
+  playtimeInfo() {
+    const total = this.state.playtime || 0;
+    const earned = Math.floor(total / PLAYTIME_STEP); // verdiente 2h-Stufen
+    const claimed = this.state.playtimeClaimed || 0;
+    const ready = earned > claimed;
+    const cycleStep = ((claimed) % 4) + 1; // 1..4 -> 2/4/6/8 h
+    return { total, ready, step: cycleStep, nextAt: (claimed + 1) * PLAYTIME_STEP };
+  }
+  /** Holt die nächste fällige Spielzeit-Belohnung ab (Ressourcen + XP). */
+  claimPlaytime() {
+    const info = this.playtimeInfo();
+    if (!info.ready) return { ok: false, error: 'Noch nicht genug Spielzeit' };
+    const step = info.step; // 1..4
+    const cap = this.capacities();
+    const r = this.state.resources;
+    const pack = 5000 * step * Math.max(1, this.level());
+    r.metal = Math.min(cap.metal, r.metal + pack);
+    r.crystal = Math.min(cap.crystal, r.crystal + Math.floor(pack * 0.6));
+    r.deuterium = Math.min(cap.deuterium, r.deuterium + Math.floor(pack * 0.3));
+    const xp = 2000 * step;
+    this._awardXp(xp);
+    this.state.playtimeClaimed = (this.state.playtimeClaimed || 0) + 1;
+    this.save();
+    return { ok: true, step, metal: pack, xp };
   }
   _buildXp(def, newLevel) {
     if (!def) return 5;
@@ -116,7 +175,14 @@ export class Game {
   }
 
   production() {
-    return F.hourlyProduction(this.state.buildings, this.state.research, this.satellites);
+    const p = F.hourlyProduction(this.state.buildings, this.state.research, this.satellites);
+    const prod = this._prodMult();
+    const mine = this._miningMult();
+    return {
+      metal: p.metal * prod * mine,
+      crystal: p.crystal * prod * mine,
+      deuterium: p.deuterium * prod,
+    };
   }
 
   energy() {
@@ -124,7 +190,9 @@ export class Game {
   }
 
   capacities() {
-    return F.capacities(this.state.buildings);
+    const c = F.capacities(this.state.buildings);
+    const m = this._storageMult();
+    return { metal: Math.floor(c.metal * m), crystal: Math.floor(c.crystal * m), deuterium: Math.floor(c.deuterium * m) };
   }
 
   /** Kampfrelevante Forschungsstufen des Spielers. */
@@ -170,6 +238,11 @@ export class Game {
     res.crystal = Math.min(cap.crystal, res.crystal + (prod.crystal / 3600) * elapsed);
     // Deuterium darf nicht unter 0 fallen (Fusion verbraucht es)
     res.deuterium = Math.max(0, Math.min(cap.deuterium, res.deuterium + (prod.deuterium / 3600) * elapsed));
+
+    // Aktive Spielzeit + Spielzeit-XP (Offline-Sprünge auf 2 Min/Tick gedeckelt).
+    const active = Math.min(elapsed, 120);
+    this.state.playtime = (this.state.playtime || 0) + active;
+    if (this.level() < MAX_LEVEL) this._awardXp(active * XP_PER_SECOND);
 
     this._processQueues(now);
     this._processFleets(now);
@@ -284,6 +357,7 @@ export class Game {
     let m = 1;
     if (this.boosterActive()) m *= 0.5;
     if (this.speedActive()) m *= (this.state.speed && this.state.speed.factor) || 0.3;
+    m *= this._speedOfficerMult(); // Kommandant verkürzt die Bauzeit
     return m;
   }
 
@@ -321,7 +395,7 @@ export class Game {
     if (!this.state.queues.building) slot = 'building';
     else if (this.boosterActive() && !this.state.queues.building2) slot = 'building2';
     // Kein Slot frei -> in die Warteschlange (max. 5), statt zu blockieren.
-    if (!slot && this.state.queues.buildingQueue.length >= 5) return { ok: false, error: 'Warteschlange voll (max. 5)' };
+    if (!slot && this.state.queues.buildingQueue.length >= this.queueLimit()) return { ok: false, error: `Warteschlange voll (max. ${this.queueLimit()})` };
     if (!this.freeBuild) {
       if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
       this._spend(cost);
@@ -365,7 +439,7 @@ export class Game {
       return { ok: true };
     }
     const busy = !!this.state.queues.research;
-    if (busy && this.state.queues.researchQueue.length >= 5) return { ok: false, error: 'Warteschlange voll (max. 5)' };
+    if (busy && this.state.queues.researchQueue.length >= this.queueLimit()) return { ok: false, error: `Warteschlange voll (max. ${this.queueLimit()})` };
     if (!this.freeBuild) {
       if (!F.canAfford(this.state.resources, cost)) return { ok: false, error: 'Nicht genug Ressourcen' };
       this._spend(cost);

@@ -523,3 +523,12 @@ button.build-btn.building-timer {
 @media (max-width: 460px) {
   .bp-grid { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* ===== Bau abbrechen ===== */
+.build-row { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; }
+.build-row .build-btn { flex: 1; }
+.cancel-build {
+  border: 1px solid #5a2b2b; color: #ff9a9a; background: rgba(120,30,30,.18);
+  padding: 6px 10px; cursor: pointer; white-space: nowrap;
+}
+.cancel-build:hover { background: rgba(160,40,40,.30); }

@@ -104,12 +104,13 @@ export function renderOverview(game) {
   const now = Date.now();
 
   const online = typeof game.coins === 'number';
-  const queueRow = (label, item, kind) => {
+  const queueRow = (label, item, kind, slot) => {
     if (!item) return `<tr><td>${label}</td><td>–</td><td>–</td><td></td></tr>`;
     const remaining = (item.finishAt - now) / 1000;
     const cost = Math.max(1, Math.ceil(remaining / 300));
     const skip = online ? `<button class="skip" data-kind="${kind}" data-cost="${cost}">⏩ ${cost} 🪙</button>` : '';
-    return `<tr><td>${label}</td><td>${game.nameOf(item.id)}</td><td>${fmtTime(remaining)}</td><td>${skip}</td></tr>`;
+    const cancel = `<button class="cancel-build ghost" data-cancel="${kind}" data-slot="${slot || kind}" title="Abbrechen – 30 % zurück">✖</button>`;
+    return `<tr><td>${label}</td><td>${game.nameOf(item.id)}</td><td>${fmtTime(remaining)}</td><td>${skip} ${cancel}</td></tr>`;
   };
 
   let shipyardRows = '';
@@ -121,13 +122,15 @@ export function renderOverview(game) {
         i === 0
           ? (job.nextAt - now) / 1000 + (job.remaining - 1) * job.perUnitSeconds
           : job.remaining * job.perUnitSeconds;
-      shipyardRows += `<tr><td>Werft</td><td>${game.nameOf(job.id)} ×${job.remaining}</td><td>${fmtTime(remaining)}</td><td></td></tr>`;
+      const cancel = `<button class="cancel-build ghost" data-cancel="shipyard" data-index="${i}" title="Abbrechen – 30 % zurück">✖</button>`;
+      shipyardRows += `<tr><td>Werft</td><td>${game.nameOf(job.id)} ×${job.remaining}</td><td>${fmtTime(remaining)}</td><td>${cancel}</td></tr>`;
     });
   }
 
   const boostActive = game.boosterActive && game.boosterActive();
+  const b2cancel = q.building2 ? `<button class="cancel-build ghost" data-cancel="building" data-slot="building2" title="Abbrechen – 30 % zurück">✖</button>` : '';
   const b2row = (boostActive || q.building2)
-    ? `<tr><td>Gebäude 2</td><td>${q.building2 ? game.nameOf(q.building2.id) : '–'}</td><td>${q.building2 ? fmtTime((q.building2.finishAt - now) / 1000) : '–'}</td><td></td></tr>`
+    ? `<tr><td>Gebäude 2</td><td>${q.building2 ? game.nameOf(q.building2.id) : '–'}</td><td>${q.building2 ? fmtTime((q.building2.finishAt - now) / 1000) : '–'}</td><td>${b2cancel}</td></tr>`
     : '';
   const boosterBar = online
     ? `<div class="booster-bar">${boostActive
@@ -159,9 +162,9 @@ export function renderOverview(game) {
           <table class="queue">
             <thead><tr><th>Bereich</th><th>Auftrag</th><th>Restzeit</th><th></th></tr></thead>
             <tbody>
-              ${queueRow('Gebäude', q.building, 'building')}
+              ${queueRow('Gebäude', q.building, 'building', 'building')}
               ${b2row}
-              ${queueRow('Forschung', q.research, 'research')}
+              ${queueRow('Forschung', q.research, 'research', 'research')}
               ${shipyardRows}
             </tbody>
           </table>
@@ -204,7 +207,8 @@ function levelCard(def, level, game, kind) {
       <div class="meta">⏱ ${fmtTime(effTime)}${effTime !== time ? ' <span class="c-coin">(Booster)</span>' : ''}</div>
       ${reqLine(def, game)}
       ${inProgressItem
-        ? `<button class="build-btn building-timer" disabled>⏳ ${fmtTime(remaining)}</button>`
+        ? `<div class="build-row"><button class="build-btn building-timer" disabled>⏳ ${fmtTime(remaining)}</button>
+           <button class="cancel-build ghost" data-cancel="${kind}" data-slot="${kind === 'building' ? (q.building && q.building.id === def.id ? 'building' : 'building2') : 'research'}" title="Abbrechen – 30 % zurück">✖ Abbrechen</button></div>`
         : `<button class="build-btn" data-kind="${kind}" data-id="${def.id}" ${disabled ? 'disabled' : ''}>${level === 0 ? 'Bauen' : 'Ausbauen'}</button>`}
     </div>`;
 }
@@ -861,12 +865,9 @@ export function renderAdmin(state) {
         <button id="admin-grant" class="build-btn" style="align-self:end">Vergeben</button>
       </div>
       <div class="booster-bar" style="margin-top:12px">
-        🏗️ <b>Baukosten:</b> ${state.freeBuild ? '<span class="lose">AUS (kostenlos)</span>' : '<span class="win">AN</span>'}
-        <button id="admin-freebuild" class="ghost">${state.freeBuild ? 'Einschalten' : 'Ausschalten'}</button>
-      </div>
-      <div class="booster-bar">
-        ⏱️ <b>Bauzeit:</b> ${state.instantBuild ? '<span class="lose">AUS (sofort fertig)</span>' : '<span class="win">AN</span>'}
-        <button id="admin-instant" class="ghost">${state.instantBuild ? 'Einschalten' : 'Ausschalten'}</button>
+        🏗️ <b>Bau-Limits</b> <span class="muted small">(Kosten · Bauzeit · Warteschleife)</span>:
+        ${state.godBuild ? '<span class="lose">AUS (gratis · sofort · unbegrenzt)</span>' : '<span class="win">AN (normal)</span>'}
+        <button id="admin-godbuild" class="ghost">${state.godBuild ? 'Einschalten' : 'Ausschalten'}</button>
       </div>
     </div>
     <div class="panel">

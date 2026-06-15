@@ -554,6 +554,11 @@ button.build-btn.building-timer {
   background: rgba(6,8,12,.85); color: #9fc8ff; border: 1px solid var(--neon);
   padding: 1px 4px; font-weight: 700;
 }
+.plot.moving { border-color: #ffd24a; box-shadow: 0 0 0 2px #ffd24a inset; }
+.plot.empty.target { border-color: var(--neon); color: var(--neon); border-style: dashed; animation: pulseTarget 1.2s infinite; }
+@keyframes pulseTarget { 50% { background: rgba(43,140,255,.14); } }
+.map-actions { display: flex; gap: 6px; margin-top: 8px; }
+.map-actions .ghost { flex: 1; }
 
 /* ===== Quest-Fortschrittsbalken ===== */
 .quest-bar { height: 8px; background: var(--bg2); border: 1px solid var(--border); margin: 8px 0; overflow: hidden; }

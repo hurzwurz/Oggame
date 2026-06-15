@@ -1110,8 +1110,9 @@ export function renderQuests(game) {
 }
 
 // ------------------------------------------------------------- Basis-Karte (Siedler-Stil)
-export function renderBaseMap(game, sel) {
+export function renderBaseMap(game, sel, move) {
   const s = game.state;
+  const moving = move != null && s.layout[move];
   let cells = '';
   for (let i = 0; i < BASE_PLOTS; i++) {
     const id = s.layout[i];
@@ -1120,15 +1121,19 @@ export function renderBaseMap(game, sel) {
       const lvl = s.buildings[id] || 0;
       const busy = game.isQueued(id);
       const badge = busy && lvl === 0 ? '🏗️' : `L${lvl}`;
-      cells += `<button class="plot built${selCls}${busy ? ' building-now' : ''}" data-plot="${i}" data-built="1">
+      const moveCls = (moving && +move === i) ? ' moving' : '';
+      cells += `<button class="plot built${selCls}${moveCls}${busy ? ' building-now' : ''}" data-plot="${i}" data-built="1">
         ${thumbHtml('buildings', id, getIcon(id, 'building'))}
         <span class="plot-badge">${badge}</span>
       </button>`;
     } else {
-      cells += `<button class="plot empty${selCls}" data-plot="${i}">＋</button>`;
+      cells += `<button class="plot empty${selCls}${moving ? ' target' : ''}" data-plot="${i}">${moving ? '↧' : '＋'}</button>`;
     }
   }
   const grid = `<div class="base-map" style="grid-template-columns:repeat(${BASE_COLS},1fr)">${cells}</div>`;
+  const moveHint = moving
+    ? `<div class="booster-bar">↔️ <b>Versetzen:</b> Tippe ein freies Feld als neues Ziel. <button class="ghost map-move-cancel">Abbrechen</button></div>`
+    : '';
 
   let ctx = '';
   if (sel != null && s.layout[sel]) {
@@ -1146,6 +1151,10 @@ export function renderBaseMap(game, sel) {
       ${busy
         ? `<button class="build-btn" disabled>🏗️ Im Bau…</button>`
         : `<button class="build-btn map-upgrade" data-id="${id}" ${afford ? '' : 'disabled'}>${lvl === 0 ? 'Bauen' : 'Ausbauen'}</button>`}
+      <div class="map-actions">
+        <button class="ghost map-move" data-plot="${sel}" ${busy ? 'disabled' : ''}>↔️ Versetzen</button>
+        <button class="ghost map-demolish" data-plot="${sel}" data-name="${esc(def.name)}" ${busy ? 'disabled' : ''}>🗑️ Abreißen</button>
+      </div>
       <button class="ghost map-deselect" style="margin-top:8px;width:100%">Schließen</button>
     </div>`;
   } else if (sel != null) {
@@ -1170,7 +1179,8 @@ export function renderBaseMap(game, sel) {
 
   return `<div class="panel">
       <h2>🗺️ Basis-Karte</h2>
-      <p class="muted small">Tippe ein freies Feld <b>＋</b>, um ein Gebäude zu setzen. Tippe ein Gebäude, um es auszubauen.</p>
+      <p class="muted small">Tippe ein freies Feld <b>＋</b>, um ein Gebäude zu setzen. Tippe ein Gebäude zum Ausbauen, Versetzen oder Abreißen.</p>
+      ${moveHint}
       ${grid}
     </div>${ctx}`;
 }

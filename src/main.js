@@ -23,6 +23,7 @@ let isAdmin = false;
 let adminData = { online: false, isAdmin: false, players: [] };
 
 let mapSel = null; // ausgewähltes Feld der Basis-Karte (Index) oder null
+let mapMove = null; // Feld, das gerade versetzt wird (Index) oder null
 
 const dispatch = { g: 1, s: 1, p: 1, mission: 'attack' };
 const sim = {
@@ -34,7 +35,7 @@ const sim = {
 const TABS = {
   overview: { label: 'Übersicht', render: (g) => V.renderOverview(g) },
   base: { label: 'Basis', render: (g) => V.renderBase(g) },
-  map: { label: '🗺️ Karte', render: (g) => V.renderBaseMap(g, mapSel) },
+  map: { label: '🗺️ Karte', render: (g) => V.renderBaseMap(g, mapSel, mapMove) },
   buildings: { label: 'Gebäude', render: (g) => V.renderBuildings(g) },
   research: { label: 'Forschung', render: (g) => V.renderResearch(g) },
   shipyard: { label: 'Werft', render: (g) => V.renderShipyard(g) },
@@ -845,7 +846,7 @@ async function onTabClick(ev) {
   const btn = ev.target.closest('.tab');
   if (!btn) return;
   activeTab = btn.dataset.tab;
-  mapSel = null; // Kartenauswahl beim Tabwechsel zurücksetzen
+  mapSel = null; mapMove = null; // Kartenauswahl/Versetzen beim Tabwechsel zurücksetzen
   renderTabs();
   renderView();
   // Galaxie online: Spielerliste aktualisieren.
@@ -886,9 +887,31 @@ function onViewClick(ev) {
   if (btn.classList.contains('hire-officer')) { doHireOfficer(btn); return; }
   if (btn.classList.contains('claim-quest')) { doClaimQuest(btn); return; }
 
-  // Basis-Karte: Feld wählen / platzieren / ausbauen
-  if (btn.classList.contains('plot')) { mapSel = +btn.dataset.plot; renderView(); return; }
+  // Basis-Karte: Feld wählen / platzieren / ausbauen / versetzen / abreißen
+  if (btn.classList.contains('plot')) {
+    const i = +btn.dataset.plot;
+    if (mapMove != null) { // Im Versetzen-Modus: Zielfeld gewählt
+      const res = game.movePlot(mapMove, i);
+      toast(res.ok ? 'Gebäude versetzt.' : (res.error || 'Versetzen nicht möglich.'), res.ok);
+      if (res.ok) persistNow();
+      mapMove = null; mapSel = null; renderView();
+      return;
+    }
+    mapSel = i; renderView();
+    return;
+  }
   if (btn.classList.contains('map-deselect')) { mapSel = null; renderView(); return; }
+  if (btn.classList.contains('map-move')) { mapMove = +btn.dataset.plot; mapSel = null; toast('Tippe ein freies Feld als Ziel.', true); renderView(); return; }
+  if (btn.classList.contains('map-move-cancel')) { mapMove = null; renderView(); return; }
+  if (btn.classList.contains('map-demolish')) {
+    const plot = +btn.dataset.plot;
+    if (!confirm(`„${btn.dataset.name}" wirklich abreißen? Du bekommst 30 % der Baukosten zurück.`)) return;
+    const res = game.demolishPlot(plot);
+    if (res.ok) { toast('Gebäude abgerissen – 30 % zurück.', true); persistNow(); mapSel = null; }
+    else toast(res.error || 'Abreißen nicht möglich.', false);
+    renderView();
+    return;
+  }
   if (btn.classList.contains('place-pick')) {
     const res = game.placeBuilding(+btn.dataset.plot, btn.dataset.id);
     if (res.ok) { toast(res.queued ? 'In die Warteschlange gestellt.' : 'Gebäude platziert – wird gebaut.', true); persistNow(); mapSel = null; }

@@ -99,6 +99,38 @@ export class Game {
     if (res.ok) { this.state.layout[plot] = id; this.save(); }
     return res;
   }
+  /** Versetzt ein Gebäude auf ein freies Feld (reine Anordnung, keine Kosten). */
+  movePlot(from, to) {
+    from = String(from); to = String(to);
+    const id = this.state.layout[from];
+    if (!id) return { ok: false, error: 'Kein Gebäude auf dem Feld' };
+    if (this.state.layout[to]) return { ok: false, error: 'Zielfeld ist belegt' };
+    delete this.state.layout[from];
+    this.state.layout[to] = id;
+    this.save();
+    return { ok: true };
+  }
+  /** Reißt ein Gebäude ab: Feld frei, Stufe auf 0, 30 % der Baukosten zurück. */
+  demolishPlot(plot) {
+    plot = String(plot);
+    const id = this.state.layout[plot];
+    if (!id) return { ok: false, error: 'Kein Gebäude auf dem Feld' };
+    if (this.isQueued(id)) return { ok: false, error: 'Gebäude ist gerade im Bau' };
+    const def = BUILDING_MAP[id];
+    const lvl = this.state.buildings[id] || 0;
+    if (def && !this.freeBuild && lvl > 0) {
+      let m = 0, c = 0, d = 0;
+      for (let L = 0; L < lvl; L++) {
+        const ct = F.levelCost(def, L);
+        m += ct.metal || 0; c += ct.crystal || 0; d += ct.deuterium || 0;
+      }
+      this._refund({ metal: m, crystal: c, deuterium: d }, 0.3);
+    }
+    delete this.state.layout[plot];
+    this.state.buildings[id] = 0;
+    this.save();
+    return { ok: true, id };
+  }
 
   _migrate(saved) {
     const base = defaultState();

@@ -8,7 +8,7 @@ import { makeBuilding } from './buildings3d.js';
 const THREE_URL = 'https://esm.sh/three@0.161.0';
 const JSM = 'https://esm.sh/three@0.161.0/examples/jsm/';
 
-let THREE = null, OrbitControls = null;
+let THREE = null, OrbitControls = null, GLTFLoader = null;
 let post = null, RoomEnvironment = null; // optionale Effekte (Bloom/Umgebung)
 async function loadThree() {
   if (THREE) return true;
@@ -20,6 +20,11 @@ async function loadThree() {
     console.warn('Three.js konnte nicht geladen werden:', e && e.message);
     return false;
   }
+  // glTF-Lader für echte 3D-Modelle (optional – sonst prozedurale Modelle).
+  try {
+    const lo = await import(/* @vite-ignore */ JSM + 'loaders/GLTFLoader.js');
+    GLTFLoader = lo.GLTFLoader;
+  } catch (e) { GLTFLoader = null; }
   // Effekte sind optional – fehlen sie, läuft die Karte ohne Bloom weiter.
   try {
     const [ec, rp, bp, op, re] = await Promise.all([
@@ -281,6 +286,48 @@ function makeHighlight(color) {
   return new THREE.Mesh(geo, mat);
 }
 
+// --------------------------------------------------- echte 3D-Modelle (glTF)
+const modelTpl = new Map(); // id -> THREE.Group (normalisiert) | 'loading' | 'failed'
+function modelUrl(id) { return `assets/models/${id}.glb`; }
+
+// Modell auf ~0.82 Grundfläche skalieren, mittig, Unterkante auf y=0, Schatten an.
+function normalizeModel(obj) {
+  const bbox = new THREE.Box3().setFromObject(obj);
+  const size = new THREE.Vector3(); bbox.getSize(size);
+  const center = new THREE.Vector3(); bbox.getCenter(center);
+  const maxXZ = Math.max(size.x, size.z) || 1;
+  obj.position.set(-center.x, -bbox.min.y, -center.z);
+  const g = new THREE.Group();
+  g.add(obj);
+  g.scale.setScalar(0.82 / maxXZ);
+  g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  return g;
+}
+
+function ensureModel(id) {
+  if (!GLTFLoader || modelTpl.has(id)) return;
+  modelTpl.set(id, 'loading');
+  const loader = new GLTFLoader();
+  loader.load(modelUrl(id),
+    (gltf) => { try { modelTpl.set(id, normalizeModel(gltf.scene)); layoutSig = ''; rebuildBuildings(); } catch (e) { modelTpl.set(id, 'failed'); } },
+    undefined,
+    () => { modelTpl.set(id, 'failed'); }); // keine Datei -> prozedurales Modell bleibt
+}
+
+function buildingFor(id, level, x, z, top) {
+  const tpl = modelTpl.get(id);
+  let model;
+  if (tpl && tpl !== 'loading' && tpl !== 'failed') {
+    model = tpl.clone(true);
+    model.scale.y *= 1 + Math.min(20, Math.max(0, level - 1)) * 0.02;
+  } else {
+    model = makeBuilding(THREE, id, level);
+    ensureModel(id); // echtes Modell nachladen, falls vorhanden
+  }
+  model.position.set(x, top, z);
+  return model;
+}
+
 function rebuildBuildings() {
   if (!buildingGroup) return;
   const s = game.state;
@@ -293,9 +340,7 @@ function rebuildBuildings() {
     const i = +p;
     const top = (tileMeshes[i] && tileMeshes[i].userData.top) || 0.7;
     const { x, z } = tileWorld(i);
-    const model = makeBuilding(THREE, id, s.buildings[id] || 0);
-    model.position.set(x, top, z);
-    buildingGroup.add(model);
+    buildingGroup.add(buildingFor(id, s.buildings[id] || 0, x, z, top));
   }
 }
 

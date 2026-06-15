@@ -5,6 +5,7 @@ import { RESEARCH, RESEARCH_MAP } from '../data/research.js';
 import { SHIPS, SHIP_MAP, SHIP_CLASSES } from '../data/ships.js';
 import { DEFENSES, DEFENSE_MAP } from '../data/defenses.js';
 import { OFFICERS, officerCost } from '../data/officers.js';
+import { BASE_COLS, BASE_PLOTS } from '../engine/game.js';
 import * as F from '../engine/formulas.js';
 import * as G from '../data/galaxy.js';
 import { getIcon } from '../data/icons.js';
@@ -1106,4 +1107,70 @@ export function renderQuests(game) {
       <p class="muted small">Schließe Aufgaben ab und kassiere XP. Abgeschlossen: <b>${doneCount}/${list.length}</b>.</p>
     </div>
     <div class="cards">${open.map(card).join('')}${list.filter((q) => q.claimed).map(card).join('')}</div>`;
+}
+
+// ------------------------------------------------------------- Basis-Karte (Siedler-Stil)
+export function renderBaseMap(game, sel) {
+  const s = game.state;
+  let cells = '';
+  for (let i = 0; i < BASE_PLOTS; i++) {
+    const id = s.layout[i];
+    const selCls = (sel != null && +sel === i) ? ' sel' : '';
+    if (id) {
+      const lvl = s.buildings[id] || 0;
+      const busy = game.isQueued(id);
+      const badge = busy && lvl === 0 ? '🏗️' : `L${lvl}`;
+      cells += `<button class="plot built${selCls}${busy ? ' building-now' : ''}" data-plot="${i}" data-built="1">
+        ${thumbHtml('buildings', id, getIcon(id, 'building'))}
+        <span class="plot-badge">${badge}</span>
+      </button>`;
+    } else {
+      cells += `<button class="plot empty${selCls}" data-plot="${i}">＋</button>`;
+    }
+  }
+  const grid = `<div class="base-map" style="grid-template-columns:repeat(${BASE_COLS},1fr)">${cells}</div>`;
+
+  let ctx = '';
+  if (sel != null && s.layout[sel]) {
+    // Ausbau-Panel für ein platziertes Gebäude
+    const id = s.layout[sel];
+    const def = BUILDING_MAP[id];
+    const lvl = s.buildings[id] || 0;
+    const cost = F.levelCost(def, lvl);
+    const afford = F.canAfford(game.resources, cost);
+    const busy = game.isQueued(id);
+    ctx = `<div class="panel">
+      <div class="card-head"><h3>${thumbHtml('buildings', id, getIcon(id, 'building'))} ${def.name}</h3><span class="level">Stufe ${lvl}</span></div>
+      <p class="desc">${def.desc}</p>
+      <div class="cost">${costLine(cost)}</div>
+      ${busy
+        ? `<button class="build-btn" disabled>🏗️ Im Bau…</button>`
+        : `<button class="build-btn map-upgrade" data-id="${id}" ${afford ? '' : 'disabled'}>${lvl === 0 ? 'Bauen' : 'Ausbauen'}</button>`}
+      <button class="ghost map-deselect" style="margin-top:8px;width:100%">Schließen</button>
+    </div>`;
+  } else if (sel != null) {
+    // Gebäude-Auswahl für ein leeres Feld
+    const placeable = BUILDINGS.filter((b) => game.plotOf(b.id) == null);
+    const items = placeable.map((b) => {
+      const cost = F.levelCost(b, 0);
+      const ok = F.requirementsMet(b, game.state) && F.canAfford(game.resources, cost);
+      return `<div class="card ${ok ? 'ready' : 'locked'}">
+        <div class="card-head"><h4>${thumbHtml('buildings', b.id, getIcon(b.id, 'building'))} ${b.name}</h4></div>
+        <p class="desc">${b.desc}</p>
+        <div class="cost">${costLine(cost)}</div>
+        ${reqLine(b, game)}
+        <button class="build-btn place-pick" data-plot="${sel}" data-id="${b.id}" ${ok ? '' : 'disabled'}>📍 Hier platzieren</button>
+      </div>`;
+    }).join('');
+    ctx = `<div class="panel">
+      <div class="card-head"><h3>Gebäude wählen</h3><button class="ghost map-deselect">✕</button></div>
+      ${placeable.length ? `<div class="cards">${items}</div>` : `<p class="muted">Alle Gebäude sind bereits platziert.</p>`}
+    </div>`;
+  }
+
+  return `<div class="panel">
+      <h2>🗺️ Basis-Karte</h2>
+      <p class="muted small">Tippe ein freies Feld <b>＋</b>, um ein Gebäude zu setzen. Tippe ein Gebäude, um es auszubauen.</p>
+      ${grid}
+    </div>${ctx}`;
 }

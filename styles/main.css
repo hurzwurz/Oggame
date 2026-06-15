@@ -532,6 +532,29 @@ button.build-btn.building-timer {
 .cancel-build:hover { background: rgba(160,40,40,.30); }
 .queued-row td { opacity: .75; border-top: 1px dashed var(--border); }
 
+/* ===== Basis-Karte (Siedler-Stil) ===== */
+.base-map { display: grid; gap: 6px; margin-top: 10px; }
+.plot {
+  position: relative; aspect-ratio: 1 / 1; width: 100%; padding: 4px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); cursor: pointer;
+  background:
+    repeating-linear-gradient(45deg, rgba(43,140,255,.04) 0 6px, transparent 6px 12px),
+    linear-gradient(180deg, #11161f, #0c1017);
+  color: var(--muted); font-size: 22px;
+}
+.plot.empty:hover { border-color: var(--neon); color: var(--neon); }
+.plot.built { background: linear-gradient(180deg, #18202c, #0e131b); }
+.plot.built .thumb { width: 100%; height: 100%; }
+.plot.built .thumb-emoji { font-size: 30px; }
+.plot.sel { border-color: var(--neon); box-shadow: 0 0 0 2px var(--neon) inset; }
+.plot.building-now { border-color: var(--neon); box-shadow: 0 0 10px rgba(43,140,255,.4); }
+.plot-badge {
+  position: absolute; right: 2px; bottom: 2px; font-size: 10px; line-height: 1;
+  background: rgba(6,8,12,.85); color: #9fc8ff; border: 1px solid var(--neon);
+  padding: 1px 4px; font-weight: 700;
+}
+
 /* ===== Quest-Fortschrittsbalken ===== */
 .quest-bar { height: 8px; background: var(--bg2); border: 1px solid var(--border); margin: 8px 0; overflow: hidden; }
 .quest-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #2b8cff, #6fa8d6); }

@@ -109,6 +109,16 @@ export function buildInitialState(row, userId) {
     fleets: sec.fleets || [],
     reports: sec.reports || [],
     fleetSeq: sec.fleetSeq || 1,
+    // Zusatz-Fortschritt (gerätelokal gesichert, da nicht in den DB-Spalten):
+    officers: sec.officers,
+    playtime: sec.playtime,
+    playtimeClaimed: sec.playtimeClaimed,
+    stats: sec.stats,
+    questsClaimed: sec.questsClaimed,
+    layout: sec.layout,
+    debris: sec.debris,
+    booster: sec.booster,
+    speed: sec.speed,
     // galaxy bewusst weggelassen -> wird deterministisch neu erzeugt
   };
 }
@@ -130,7 +140,12 @@ export function makeCloudSaver(planetId, userId) {
     try {
       localStorage.setItem(
         secondaryKey(userId),
-        JSON.stringify({ fleets: s.fleets, reports: s.reports, fleetSeq: s.fleetSeq })
+        JSON.stringify({
+          fleets: s.fleets, reports: s.reports, fleetSeq: s.fleetSeq,
+          officers: s.officers, playtime: s.playtime, playtimeClaimed: s.playtimeClaimed,
+          stats: s.stats, questsClaimed: s.questsClaimed, layout: s.layout,
+          debris: s.debris, booster: s.booster, speed: s.speed,
+        })
       );
     } catch {
       /* localStorage optional */

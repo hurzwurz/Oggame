@@ -9,6 +9,9 @@ import { QUESTS } from '../data/quests.js';
 import * as F from './formulas.js';
 
 export const MAX_LEVEL = 150; // Maximale Spielerstufe
+export const BASE_COLS = 5; // Spalten der Basis-Karte
+export const BASE_ROWS = 6; // Reihen der Basis-Karte
+export const BASE_PLOTS = BASE_COLS * BASE_ROWS; // Anzahl Bauplätze
 const PLAYTIME_STEP = 7200; // 2 Stunden je Spielzeit-Belohnung
 import { loadGame, saveGame } from './storage.js';
 import { simulateBattle } from './combat.js';
@@ -43,6 +46,7 @@ function defaultState() {
     playtimeClaimed: 0, // Anzahl bereits abgeholter 2-Stunden-Belohnungen
     stats: { combatWins: 0, expeditions: 0, fleetsSent: 0, debrisCollected: 0 }, // Zähler für Quests
     questsClaimed: {}, // abgeschlossene & abgeholte Quests: id -> true
+    layout: {}, // Basis-Karte: Bauplatz-Index -> Gebäude-ID
     galaxy: G.generateGalaxy(),
     fleets: [], // unterwegs befindliche Missionen
     reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
@@ -60,8 +64,40 @@ export class Game {
     this.freeQueue = false; // globaler Admin-Schalter: Bau-Warteschleife aus (sofort, unbegrenzt)
     const source = options.initialState || loadGame();
     this.state = source ? this._migrate(source) : defaultState();
+    this._ensureLayout(); // bestehende Gebäude auf die Basis-Karte setzen
     // Offline-Fortschritt nachholen
     this.tick();
+  }
+
+  // ------------------------------------------------------------- Basis-Karte
+  // Setzt vorhandene Gebäude auf freie Bauplätze (für bestehende Spielstände).
+  _ensureLayout() {
+    if (!this.state.layout) this.state.layout = {};
+    if (Object.keys(this.state.layout).length) return;
+    let i = 0;
+    for (const id of Object.keys(this.state.buildings)) {
+      if ((this.state.buildings[id] || 0) > 0 && i < BASE_PLOTS) this.state.layout[i++] = id;
+    }
+  }
+  /** Liefert den Bauplatz-Index eines Gebäudes oder null. */
+  plotOf(id) {
+    for (const [p, b] of Object.entries(this.state.layout)) if (b === id) return p;
+    return null;
+  }
+  /** Ist dieses Gebäude gerade im Bau (Slot/Warteschlange)? */
+  isQueued(id) {
+    const q = this.state.queues;
+    return (q.building && q.building.id === id) || (q.building2 && q.building2.id === id) ||
+      (q.buildingQueue || []).some((o) => o.id === id);
+  }
+  /** Platziert ein Gebäude auf einem Feld (baut es zugleich – Kosten/Bauzeit). */
+  placeBuilding(plot, id) {
+    plot = String(plot);
+    if (this.state.layout[plot]) return { ok: false, error: 'Feld ist belegt' };
+    if (this.plotOf(id) != null) return { ok: false, error: 'Dieses Gebäude existiert bereits' };
+    const res = this.buildBuilding(id);
+    if (res.ok) { this.state.layout[plot] = id; this.save(); }
+    return res;
   }
 
   _migrate(saved) {
@@ -90,6 +126,7 @@ export class Game {
       playtimeClaimed: saved.playtimeClaimed || 0,
       stats: { combatWins: 0, expeditions: 0, fleetsSent: 0, debrisCollected: 0, ...(saved.stats || {}) },
       questsClaimed: saved.questsClaimed || {},
+      layout: saved.layout || {},
     };
   }
 

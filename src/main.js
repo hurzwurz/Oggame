@@ -22,6 +22,8 @@ let dailyData = { online: false };
 let isAdmin = false;
 let adminData = { online: false, isAdmin: false, players: [] };
 
+let mapSel = null; // ausgewähltes Feld der Basis-Karte (Index) oder null
+
 const dispatch = { g: 1, s: 1, p: 1, mission: 'attack' };
 const sim = {
   attacker: { tech: { weaponsTech: 0, shieldTech: 0, armorTech: 0 }, units: [{ id: 'lightFighter', count: 100, kind: 'ship' }] },
@@ -32,6 +34,7 @@ const sim = {
 const TABS = {
   overview: { label: 'Übersicht', render: (g) => V.renderOverview(g) },
   base: { label: 'Basis', render: (g) => V.renderBase(g) },
+  map: { label: '🗺️ Karte', render: (g) => V.renderBaseMap(g, mapSel) },
   buildings: { label: 'Gebäude', render: (g) => V.renderBuildings(g) },
   research: { label: 'Forschung', render: (g) => V.renderResearch(g) },
   shipyard: { label: 'Werft', render: (g) => V.renderShipyard(g) },
@@ -842,6 +845,7 @@ async function onTabClick(ev) {
   const btn = ev.target.closest('.tab');
   if (!btn) return;
   activeTab = btn.dataset.tab;
+  mapSel = null; // Kartenauswahl beim Tabwechsel zurücksetzen
   renderTabs();
   renderView();
   // Galaxie online: Spielerliste aktualisieren.
@@ -881,6 +885,24 @@ function onViewClick(ev) {
   if (btn.id === 'buy-speed') { doBuySpeed(); return; }
   if (btn.classList.contains('hire-officer')) { doHireOfficer(btn); return; }
   if (btn.classList.contains('claim-quest')) { doClaimQuest(btn); return; }
+
+  // Basis-Karte: Feld wählen / platzieren / ausbauen
+  if (btn.classList.contains('plot')) { mapSel = +btn.dataset.plot; renderView(); return; }
+  if (btn.classList.contains('map-deselect')) { mapSel = null; renderView(); return; }
+  if (btn.classList.contains('place-pick')) {
+    const res = game.placeBuilding(+btn.dataset.plot, btn.dataset.id);
+    if (res.ok) { toast(res.queued ? 'In die Warteschlange gestellt.' : 'Gebäude platziert – wird gebaut.', true); persistNow(); mapSel = null; }
+    else toast(res.error || 'Platzieren nicht möglich.', false);
+    renderView();
+    return;
+  }
+  if (btn.classList.contains('map-upgrade')) {
+    const res = game.buildBuilding(btn.dataset.id);
+    if (res.ok) { toast(res.queued ? 'In die Warteschlange gestellt.' : 'Ausbau gestartet.', true); persistNow(); }
+    else toast(res.error || 'Ausbau nicht möglich.', false);
+    renderView();
+    return;
+  }
   if (btn.classList.contains('skip')) { doSkip(+btn.dataset.cost, btn.dataset.kind); return; }
   if (btn.id === 'admin-grant') { doAdminGrant(); return; }
   if (btn.classList.contains('cancel-build')) { doCancel(btn); return; }

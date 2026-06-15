@@ -92,11 +92,15 @@ function build() {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.setSize(w, hh);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
   el.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a1622);
-  scene.fog = new THREE.Fog(0x0a1622, COLS * 1.6, COLS * 4);
+  scene.background = new THREE.Color(0x0b1a2a);
+  scene.fog = new THREE.Fog(0x0b1a2a, COLS * 1.8, COLS * 4.5);
 
   camera = new THREE.PerspectiveCamera(50, w / hh, 0.1, 200);
   resetCamera();
@@ -108,12 +112,21 @@ function build() {
   controls.minDistance = 4; controls.maxDistance = COLS * 3;
   controls.target.set(0, 0, 0);
 
-  // Licht
-  scene.add(new THREE.AmbientLight(0x8898b0, 1.1));
-  const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
-  sun.position.set(COLS * 0.6, COLS * 1.2, ROWS * 0.4);
+  // Licht: warme Sonne mit Schatten + kühles Umgebungslicht
+  scene.add(new THREE.AmbientLight(0xb6c2d4, 1.0));
+  const sun = new THREE.DirectionalLight(0xfff0d2, 2.6);
+  sun.position.set(COLS * 0.7, COLS * 1.5, ROWS * 0.55);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  const sc = sun.shadow.camera;
+  sc.left = -COLS; sc.right = COLS; sc.top = ROWS; sc.bottom = -ROWS; sc.near = 0.5; sc.far = COLS * 4;
+  sun.shadow.bias = -0.0006;
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0x9fc8ff, 0x202830, 0.5));
+  scene.add(new THREE.HemisphereLight(0x9fc8ff, 0x1a2230, 0.55));
+
+  // Boden, der Schatten auffängt
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(COLS * 3, ROWS * 3), new THREE.MeshStandardMaterial({ color: 0x0a1622, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
   buildTerrain();
   highlight = makeHighlight(0xffd24a);
@@ -147,6 +160,28 @@ function tileWorld(i) {
   return { x: cx - (COLS - 1) / 2, z: cy - (ROWS - 1) / 2 };
 }
 
+const terrTexCache = {};
+function shadeC(color, f) {
+  const r = Math.min(255, ((color >> 16) & 255) * f), g = Math.min(255, ((color >> 8) & 255) * f), b = Math.min(255, (color & 255) * f);
+  return (r << 16) | (g << 8) | b;
+}
+function terrainTexture(type, color) {
+  if (terrTexCache[type]) return terrTexCache[type];
+  if (typeof document === 'undefined') return null;
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d');
+  x.fillStyle = '#' + (color & 0xffffff).toString(16).padStart(6, '0'); x.fillRect(0, 0, S, S);
+  for (let k = 0; k < 160; k++) {
+    const f = 0.78 + Math.random() * 0.5;
+    x.fillStyle = '#' + (shadeC(color, f) & 0xffffff).toString(16).padStart(6, '0');
+    const sz = type === 'water' ? 3 : 2;
+    x.fillRect(Math.random() * S, Math.random() * S, sz, sz);
+  }
+  const t = new THREE.CanvasTexture(c);
+  if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+  terrTexCache[type] = t; return t;
+}
+
 function buildTerrain() {
   const s = game.state;
   for (let i = 0; i < COLS * ROWS; i++) {
@@ -154,9 +189,11 @@ function buildTerrain() {
     const def = TERR[terr] || TERR.grass;
     const { x, z } = tileWorld(i);
     const geo = new THREE.BoxGeometry(0.98, def.h, 0.98);
-    const mat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.95, metalness: 0.0 });
+    const tex = terrainTexture(terr, def.color);
+    const mat = new THREE.MeshStandardMaterial({ color: tex ? 0xffffff : def.color, map: tex || null, roughness: terr === 'water' ? 0.4 : 0.95, metalness: terr === 'water' ? 0.2 : 0.0 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, def.h / 2, z);
+    mesh.castShadow = true; mesh.receiveShadow = true;
     mesh.userData = { index: i, top: def.h };
     scene.add(mesh);
     tileMeshes.push(mesh);
@@ -173,6 +210,7 @@ function addDecor(terr, x, top, z, i) {
       const c = new THREE.Mesh(g, m);
       const ox = ((i * 13 + k * 7) % 5 - 2) * 0.13, oz = ((i * 7 + k * 11) % 5 - 2) * 0.13;
       c.position.set(x + ox, top + 0.2, z + oz);
+      c.castShadow = true; c.receiveShadow = true;
       scene.add(c);
     }
   } else if (terr === 'mountain') {
@@ -180,6 +218,7 @@ function addDecor(terr, x, top, z, i) {
     const m = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, roughness: 1, flatShading: true });
     const c = new THREE.Mesh(g, m);
     c.position.set(x, top + 0.25, z); c.rotation.y = r;
+    c.castShadow = true; c.receiveShadow = true;
     scene.add(c);
   }
 }

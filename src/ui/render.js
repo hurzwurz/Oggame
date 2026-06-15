@@ -1110,6 +1110,66 @@ export function renderQuests(game) {
     <div class="cards">${open.map(card).join('')}${list.filter((q) => q.claimed).map(card).join('')}</div>`;
 }
 
+// ------------------------------------------------------- Canvas-Karte: Seitenpanel
+// Host für das Canvas + darunter das Aktions-Panel (Bauen/Ausbauen/Versetzen).
+export function renderMapHost() {
+  return `<div class="panel" style="padding:8px">
+      <div id="map-host"></div>
+      <div class="terr-legend">${Object.entries(TERRAINS).map(([, t]) => `<span class="terr-key">${t.emoji} ${t.name}</span>`).join('')}</div>
+    </div>
+    <div id="map-panel"></div>`;
+}
+
+export function renderMapPanel(game, sel, move) {
+  const s = game.state;
+  if (move != null && s.layout[move]) {
+    const id = s.layout[move];
+    return `<div class="panel"><div class="booster-bar">↔️ <b>Versetzen:</b> Tippe ein freies, passendes Feld für „${BUILDING_MAP[id].name}". <button class="ghost map-move-cancel">Abbrechen</button></div></div>`;
+  }
+  if (sel != null && s.layout[sel]) {
+    const id = s.layout[sel];
+    const def = BUILDING_MAP[id];
+    const lvl = s.buildings[id] || 0;
+    const cost = F.levelCost(def, lvl);
+    const afford = F.canAfford(game.resources, cost);
+    const busy = game.isQueued(id);
+    return `<div class="panel">
+      <div class="card-head"><h3>${thumbHtml('buildings', id, getIcon(id, 'building'))} ${def.name}</h3><span class="level">Stufe ${lvl}</span></div>
+      <p class="desc">${def.desc}</p>
+      <div class="cost">${costLine(cost)}</div>
+      ${busy
+        ? `<button class="build-btn" disabled>🏗️ Im Bau…</button>`
+        : `<button class="build-btn map-upgrade" data-id="${id}" ${afford ? '' : 'disabled'}>${lvl === 0 ? 'Bauen' : 'Ausbauen'}</button>`}
+      <div class="map-actions">
+        <button class="ghost map-move" data-plot="${sel}" ${busy ? 'disabled' : ''}>↔️ Versetzen</button>
+        <button class="ghost map-demolish" data-plot="${sel}" data-name="${esc(def.name)}" ${busy ? 'disabled' : ''}>🗑️ Abreißen</button>
+      </div>
+      <button class="ghost map-deselect" style="margin-top:8px;width:100%">Schließen</button>
+    </div>`;
+  }
+  if (sel != null) {
+    const terr = game.terrainAt(sel);
+    const tInfo = TERRAINS[terr] || { name: terr, emoji: '' };
+    const placeable = BUILDINGS.filter((b) => game.plotOf(b.id) == null && game.canPlaceOn(b.id, sel));
+    const items = placeable.map((b) => {
+      const cost = F.levelCost(b, 0);
+      const ok = F.requirementsMet(b, game.state) && F.canAfford(game.resources, cost);
+      return `<div class="card ${ok ? 'ready' : 'locked'}">
+        <div class="card-head"><h4>${thumbHtml('buildings', b.id, getIcon(b.id, 'building'))} ${b.name}</h4></div>
+        <p class="desc">${b.desc}</p>
+        <div class="cost">${costLine(cost)}</div>
+        ${reqLine(b, game)}
+        <button class="build-btn place-pick" data-plot="${sel}" data-id="${b.id}" ${ok ? '' : 'disabled'}>📍 Hier bauen</button>
+      </div>`;
+    }).join('');
+    return `<div class="panel">
+      <div class="card-head"><h3>${tInfo.emoji} ${tInfo.name} – Gebäude wählen</h3><button class="ghost map-deselect">✕</button></div>
+      ${placeable.length ? `<div class="cards">${items}</div>` : `<p class="muted">Auf <b>${tInfo.name}</b> kann hier kein (weiteres) Gebäude gebaut werden.</p>`}
+    </div>`;
+  }
+  return `<div class="panel"><p class="muted small">Tippe ein Feld auf der Karte: leeres Feld = bauen (nur passendes Gelände), Gebäude = ausbauen/versetzen/abreißen. Ziehen zum Scrollen, Mausrad/Knöpfe zum Zoomen.</p></div>`;
+}
+
 // ------------------------------------------------------------- Basis-Karte (Siedler-Stil)
 export function renderBaseMap(game, sel, move) {
   const s = game.state;

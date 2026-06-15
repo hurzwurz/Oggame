@@ -560,6 +560,21 @@ button.build-btn.building-timer {
 .map-actions { display: flex; gap: 6px; margin-top: 8px; }
 .map-actions .ghost { flex: 1; }
 
+/* ===== Canvas-Karte (Anno/C&C-Stil) ===== */
+.mapwrap { position: relative; width: 100%; }
+.mapcanvas {
+  display: block; width: 100%; touch-action: none; cursor: grab;
+  border: 1px solid var(--border); background: #0a1622;
+}
+.mapcanvas:active { cursor: grabbing; }
+.mapzoom { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mapzoom .mz {
+  width: 40px; height: 40px; font-size: 20px; font-weight: 700;
+  background: rgba(10,18,28,.82); color: #cfe3ff; border: 1px solid var(--neon);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.mapzoom .mz:active { background: rgba(43,140,255,.3); }
+
 /* ===== Gelände-Farben ===== */
 .plot.t-grass    { background: linear-gradient(180deg, #1d3a26, #14271b); }
 .plot.t-forest   { background: linear-gradient(180deg, #16331f, #0e2114); }

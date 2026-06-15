@@ -4,6 +4,7 @@ import { Game } from './engine/game.js';
 import { clearGame } from './engine/storage.js';
 import { simulateBattle } from './engine/combat.js';
 import * as V from './ui/render.js';
+import * as mapview from './ui/mapview.js';
 import { isConfigured, getClient, currentUser, signIn, signUp, signOut, onAuthChange, loadGalaxyOverview, resetPassword, updatePassword, onPasswordRecovery } from './net/supabase.js';
 import { ensureProfile, ensureHomePlanet, buildInitialState, makeCloudSaver } from './net/cloud.js';
 import * as Social from './net/social.js';
@@ -67,7 +68,8 @@ function profileState() {
     isAdmin,
   };
 }
-const LIVE_TABS = new Set(['overview', 'base', 'map', 'movement', 'reports', 'buildings', 'research', 'daily']);
+const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports', 'buildings', 'research', 'daily']);
+let mapMounted = false; // ist die Canvas-Karte gerade eingehängt?
 // Reines Aufbauspiel: die reinen Weltraum-/Kampf-Tabs ausblenden.
 const HIDDEN_TABS = new Set(['shipyard', 'defense', 'fleet', 'galaxy', 'movement', 'reports', 'simulator']);
 let activeTab = 'map';
@@ -801,7 +803,38 @@ function renderTabs() {
 
 function renderView() {
   topbarEl.innerHTML = V.renderTopbar(game);
+  if (activeTab === 'map') {
+    if (!mapMounted) {
+      viewEl.innerHTML = V.renderMapHost();
+      mapview.mount(document.getElementById('map-host'), game, { onTileClick: onMapTile });
+      mapMounted = true;
+    }
+    mapview.setSelection(mapSel, mapMove);
+    mapview.refresh(game);
+    updateMapPanel();
+    return;
+  }
+  if (mapMounted) { mapview.unmount(); mapMounted = false; }
   viewEl.innerHTML = TABS[activeTab].render(game);
+}
+
+function updateMapPanel() {
+  const p = document.getElementById('map-panel');
+  if (p) p.innerHTML = V.renderMapPanel(game, mapSel, mapMove);
+}
+
+// Klick auf ein Kartenfeld (vom Canvas gemeldet).
+function onMapTile(i) {
+  if (mapMove != null) {
+    const res = game.movePlot(mapMove, i);
+    toast(res.ok ? 'Gebäude versetzt.' : (res.error || 'Versetzen nicht möglich.'), res.ok);
+    if (res.ok) persistNow();
+    mapMove = null; mapSel = null;
+  } else {
+    mapSel = i;
+  }
+  mapview.setSelection(mapSel, mapMove);
+  updateMapPanel();
 }
 
 function toast(msg, ok = true) {

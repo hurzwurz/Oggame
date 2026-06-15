@@ -560,14 +560,16 @@ button.build-btn.building-timer {
 .map-actions { display: flex; gap: 6px; margin-top: 8px; }
 .map-actions .ghost { flex: 1; }
 
-/* ===== Canvas-Karte (Anno/C&C-Stil) ===== */
-.mapwrap { position: relative; width: 100%; }
-.mapcanvas {
-  display: block; width: 100%; touch-action: none; cursor: grab;
-  border: 1px solid var(--border); background: #0a1622;
+/* ===== 3D-Karte (WebGL) ===== */
+.map3d-wrap { position: relative; width: 100%; }
+.map3d { width: 100%; border: 1px solid var(--border); background: #0a1622; line-height: 0; }
+.map3d canvas { display: block; width: 100%; touch-action: none; cursor: grab; }
+.map3d canvas:active { cursor: grabbing; }
+.map3d-load {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 20px; color: var(--muted); background: rgba(10,18,28,.6);
 }
-.mapcanvas:active { cursor: grabbing; }
-.mapzoom { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mapzoom { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
 .mapzoom .mz {
   width: 40px; height: 40px; font-size: 20px; font-weight: 700;
   background: rgba(10,18,28,.82); color: #cfe3ff; border: 1px solid var(--neon);

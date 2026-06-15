@@ -1,268 +1,274 @@
-// Canvas-Kartenansicht im Anno/C&C-Stil: gezeichnetes Gelände, Gebäude-Sprites,
-// Scrollen (ziehen) und Zoomen. Wird imperativ in einen Host-Container gehängt.
+// Echte 3D-Kartenansicht (WebGL / Three.js, frei drehbar).
+// Three.js wird dynamisch per CDN geladen; klappt das nicht, zeigt die Karte
+// einen Hinweis statt eines leeren Bildschirms.
 
 import { BASE_COLS, BASE_ROWS } from '../engine/game.js';
 
-const TS = 84; // Basis-Kachelgröße in Weltpixeln
+const THREE_URL = 'https://esm.sh/three@0.161.0';
+const ORBIT_URL = 'https://esm.sh/three@0.161.0/examples/jsm/controls/OrbitControls.js';
 
-const imgCache = new Map();
-function sprite(id) {
-  if (imgCache.has(id)) return imgCache.get(id);
-  const im = new Image();
-  im.src = `assets/buildings/${id}.png`;
-  im.decoding = 'async';
-  imgCache.set(id, im);
-  return im;
+let THREE = null, OrbitControls = null;
+async function loadThree() {
+  if (THREE) return true;
+  try {
+    THREE = await import(/* @vite-ignore */ THREE_URL);
+    const oc = await import(/* @vite-ignore */ ORBIT_URL);
+    OrbitControls = oc.OrbitControls;
+    return true;
+  } catch (e) {
+    console.warn('Three.js konnte nicht geladen werden:', e && e.message);
+    return false;
+  }
 }
 
-let host = null, canvas = null, ctx = null, raf = 0;
-let game = null, opts = {};
-let cam = { x: 0, y: 0, z: 1 };
-let sel = null, move = null, hover = null;
-let dpr = 1;
-const drag = { on: false, moved: false, sx: 0, sy: 0, cx: 0, cy: 0 };
+// Geländehöhen & Farben
+const TERR = {
+  water:    { h: 0.25, color: 0x1f6f9c },
+  sand:     { h: 0.55, color: 0xc4ab63 },
+  grass:    { h: 0.7,  color: 0x2c6b39 },
+  forest:   { h: 0.85, color: 0x22512c },
+  mountain: { h: 1.7,  color: 0x6b6f78 },
+};
 
-export function mount(h, g, o) {
+let host = null, opts = {}, game = null;
+let renderer, scene, camera, controls, raf = 0;
+let tileMeshes = [], buildingGroup = null, highlight = null, targetGroup = null;
+let texLoader = null; const texCache = new Map();
+let sel = null, move = null, ready = false, layoutSig = '';
+const COLS = BASE_COLS, ROWS = BASE_ROWS;
+
+export async function mount(h, g, o) {
   unmount();
   host = h; game = g; opts = o || {};
-  host.innerHTML = `<div class="mapwrap">
-    <canvas class="mapcanvas"></canvas>
-    <div class="mapzoom">
-      <button class="mz" data-z="in">＋</button>
-      <button class="mz" data-z="out">－</button>
-      <button class="mz" data-z="home">⟳</button>
-    </div>
+  host.innerHTML = `<div class="map3d-wrap">
+    <div class="map3d"></div>
+    <div class="map3d-load">🌍 Lade 3D-Welt…</div>
+    <div class="mapzoom"><button class="mz" data-z="reset">⟳</button></div>
   </div>`;
-  canvas = host.querySelector('.mapcanvas');
-  ctx = canvas.getContext('2d');
-  resize();
-  centerCamera();
-  bind();
-  loop();
-  window.addEventListener('resize', resize);
+  const ok = await loadThree();
+  if (!ok || !host) { showError(); return; }
+  try { build(); ready = true; }
+  catch (e) { console.warn('3D-Aufbau fehlgeschlagen:', e); showError(); }
+}
+
+function showError() {
+  if (!host) return;
+  const l = host.querySelector('.map3d-load');
+  if (l) l.innerHTML = '⚠️ 3D-Karte konnte nicht geladen werden (Internet/Browser). <button class="ghost mz" data-z="retry" style="margin-top:8px">Nochmal versuchen</button>';
+  const btn = host.querySelector('[data-z="retry"]');
+  if (btn) btn.addEventListener('click', () => mount(host, game, opts));
 }
 
 export function unmount() {
   if (raf) cancelAnimationFrame(raf), raf = 0;
-  window.removeEventListener('resize', resize);
-  if (canvas) {
-    canvas.removeEventListener('pointerdown', onDown);
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    canvas.removeEventListener('wheel', onWheel);
+  window.removeEventListener('resize', onResize);
+  if (controls) { controls.dispose(); controls = null; }
+  if (renderer) {
+    renderer.domElement.removeEventListener('pointerdown', onDown);
+    renderer.domElement.removeEventListener('pointerup', onUp);
+    renderer.dispose();
+    renderer = null;
   }
-  host = canvas = ctx = game = null; sel = move = hover = null;
+  scene = camera = null; tileMeshes = []; buildingGroup = highlight = targetGroup = null;
+  ready = false; layoutSig = '';
+  host = null;
 }
 
-export function setSelection(s, m) { sel = s == null ? null : +s; move = m == null ? null : +m; }
-export function refresh(g) { if (g) game = g; }
-
-function resize() {
-  if (!canvas) return;
-  dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = host.clientWidth, h = Math.max(320, Math.min(560, Math.round(window.innerHeight * 0.52)));
-  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+export function setSelection(s, m) {
+  sel = s == null ? null : +s; move = m == null ? null : +m;
+  if (ready) { updateHighlight(); updateTargets(); }
+}
+export function refresh(g) {
+  if (g) game = g;
+  if (ready) rebuildBuildings();
 }
 
-function centerCamera() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  const mapW = BASE_COLS * TS, mapH = BASE_ROWS * TS;
-  cam.z = Math.min(w / mapW, h / mapH) * 0.96;
-  cam.x = (mapW * cam.z - w) / 2;
-  cam.y = (mapH * cam.z - h) / 2;
-  clampCam();
+// ----------------------------------------------------------------- Aufbau
+function build() {
+  const el = host.querySelector('.map3d');
+  const w = host.clientWidth, hh = Math.max(340, Math.min(560, Math.round(window.innerHeight * 0.55)));
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setSize(w, hh);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  el.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a1622);
+  scene.fog = new THREE.Fog(0x0a1622, COLS * 1.6, COLS * 4);
+
+  camera = new THREE.PerspectiveCamera(50, w / hh, 0.1, 200);
+  resetCamera();
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI * 0.49; // nicht unter den Boden
+  controls.minDistance = 4; controls.maxDistance = COLS * 3;
+  controls.target.set(0, 0, 0);
+
+  // Licht
+  scene.add(new THREE.AmbientLight(0x8898b0, 1.1));
+  const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
+  sun.position.set(COLS * 0.6, COLS * 1.2, ROWS * 0.4);
+  scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0x9fc8ff, 0x202830, 0.5));
+
+  texLoader = new THREE.TextureLoader();
+
+  buildTerrain();
+  highlight = makeHighlight(0xffd24a);
+  scene.add(highlight); highlight.visible = false;
+  targetGroup = new THREE.Group(); scene.add(targetGroup);
+  buildingGroup = new THREE.Group(); scene.add(buildingGroup);
+  rebuildBuildings();
+  updateHighlight();
+
+  renderer.domElement.addEventListener('pointerdown', onDown);
+  renderer.domElement.addEventListener('pointerup', onUp);
+  window.addEventListener('resize', onResize);
+
+  const loadEl = host.querySelector('.map3d-load');
+  if (loadEl) loadEl.remove();
+  host.querySelectorAll('.mz').forEach((b) => b.addEventListener('click', () => { if (b.dataset.z === 'reset') resetCamera(); }));
+
+  loop();
 }
 
-function clampCam() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  const mapW = BASE_COLS * TS * cam.z, mapH = BASE_ROWS * TS * cam.z;
-  const maxX = Math.max(0, mapW - w), maxY = Math.max(0, mapH - h);
-  const minX = Math.min(0, mapW - w), minY = Math.min(0, mapH - h);
-  cam.x = Math.max(minX, Math.min(maxX, cam.x));
-  cam.y = Math.max(minY, Math.min(maxY, cam.y));
+function resetCamera() {
+  if (!camera) return;
+  camera.position.set(0, COLS * 1.15, ROWS * 1.25);
+  camera.lookAt(0, 0, 0);
+  if (controls) { controls.target.set(0, 0, 0); controls.update(); }
 }
 
-function bind() {
-  canvas.addEventListener('pointerdown', onDown);
-  window.addEventListener('pointermove', onMove);
-  window.addEventListener('pointerup', onUp);
-  canvas.addEventListener('wheel', onWheel, { passive: false });
-  host.querySelectorAll('.mz').forEach((b) => b.addEventListener('click', () => {
-    const k = b.dataset.z;
-    if (k === 'home') return centerCamera();
-    zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, k === 'in' ? 1.25 : 0.8);
-  }));
+// Weltkoordinate der Kachelmitte
+function tileWorld(i) {
+  const cx = i % COLS, cy = Math.floor(i / COLS);
+  return { x: cx - (COLS - 1) / 2, z: cy - (ROWS - 1) / 2 };
 }
 
-function onDown(e) { drag.on = true; drag.moved = false; drag.sx = e.clientX; drag.sy = e.clientY; drag.cx = cam.x; drag.cy = cam.y; }
-function onMove(e) {
-  const r = canvas.getBoundingClientRect();
-  hover = tileAt(e.clientX - r.left, e.clientY - r.top);
-  if (!drag.on) return;
-  const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
-  if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-  cam.x = drag.cx - dx; cam.y = drag.cy - dy; clampCam();
+function buildTerrain() {
+  const s = game.state;
+  for (let i = 0; i < COLS * ROWS; i++) {
+    const terr = (s.terrain && s.terrain[i]) || 'grass';
+    const def = TERR[terr] || TERR.grass;
+    const { x, z } = tileWorld(i);
+    const geo = new THREE.BoxGeometry(0.98, def.h, 0.98);
+    const mat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.95, metalness: 0.0 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, def.h / 2, z);
+    mesh.userData = { index: i, top: def.h };
+    scene.add(mesh);
+    tileMeshes.push(mesh);
+    addDecor(terr, x, def.h, z, i);
+  }
 }
+
+function addDecor(terr, x, top, z, i) {
+  const r = (Math.sin(i * 127.1) * 43758.5453) % 1;
+  if (terr === 'forest') {
+    for (let k = 0; k < 3; k++) {
+      const g = new THREE.ConeGeometry(0.13, 0.4, 6);
+      const m = new THREE.MeshStandardMaterial({ color: 0x2f7a39, roughness: 1 });
+      const c = new THREE.Mesh(g, m);
+      const ox = ((i * 13 + k * 7) % 5 - 2) * 0.13, oz = ((i * 7 + k * 11) % 5 - 2) * 0.13;
+      c.position.set(x + ox, top + 0.2, z + oz);
+      scene.add(c);
+    }
+  } else if (terr === 'mountain') {
+    const g = new THREE.ConeGeometry(0.32, 0.5, 4);
+    const m = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, roughness: 1, flatShading: true });
+    const c = new THREE.Mesh(g, m);
+    c.position.set(x, top + 0.25, z); c.rotation.y = r;
+    scene.add(c);
+  }
+}
+
+function makeHighlight(color) {
+  const geo = new THREE.BoxGeometry(1.02, 0.06, 1.02);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 });
+  return new THREE.Mesh(geo, mat);
+}
+
+function texture(id) {
+  if (texCache.has(id)) return texCache.get(id);
+  const t = texLoader.load(`assets/buildings/${id}.png`);
+  t.colorSpace = THREE.SRGBColorSpace;
+  texCache.set(id, t);
+  return t;
+}
+
+function rebuildBuildings() {
+  if (!buildingGroup) return;
+  const s = game.state;
+  const sig = Object.entries(s.layout).map(([p, id]) => p + ':' + id).sort().join('|');
+  if (sig === layoutSig) return; // nichts geändert
+  layoutSig = sig;
+  while (buildingGroup.children.length) buildingGroup.remove(buildingGroup.children[0]);
+  for (const [p, id] of Object.entries(s.layout)) {
+    const i = +p;
+    const top = (tileMeshes[i] && tileMeshes[i].userData.top) || 0.7;
+    const { x, z } = tileWorld(i);
+    const mat = new THREE.SpriteMaterial({ map: texture(id), transparent: true });
+    const spr = new THREE.Sprite(mat);
+    spr.scale.set(0.95, 0.95, 1);
+    spr.position.set(x, top + 0.5, z);
+    buildingGroup.add(spr);
+  }
+}
+
+function updateHighlight() {
+  if (!highlight) return;
+  if (sel == null) { highlight.visible = false; return; }
+  const top = (tileMeshes[sel] && tileMeshes[sel].userData.top) || 0.7;
+  const { x, z } = tileWorld(sel);
+  highlight.position.set(x, top + 0.04, z);
+  highlight.visible = true;
+}
+
+function updateTargets() {
+  if (!targetGroup) return;
+  while (targetGroup.children.length) targetGroup.remove(targetGroup.children[0]);
+  if (move == null || !game.state.layout[move]) return;
+  const id = game.state.layout[move];
+  for (let i = 0; i < COLS * ROWS; i++) {
+    if (game.state.layout[i]) continue;
+    if (game.canPlaceOn && !game.canPlaceOn(id, i)) continue;
+    const top = (tileMeshes[i] && tileMeshes[i].userData.top) || 0.7;
+    const { x, z } = tileWorld(i);
+    const m = makeHighlight(0x7fe3aa); m.material.opacity = 0.5;
+    m.position.set(x, top + 0.05, z);
+    targetGroup.add(m);
+  }
+}
+
+// ----------------------------------------------------------------- Events
+const down = { x: 0, y: 0, t: 0 };
+function onDown(e) { down.x = e.clientX; down.y = e.clientY; down.t = Date.now(); }
 function onUp(e) {
-  if (!drag.on) return;
-  drag.on = false;
-  if (!drag.moved) {
-    const r = canvas.getBoundingClientRect();
-    const t = tileAt(e.clientX - r.left, e.clientY - r.top);
-    if (t != null && opts.onTileClick) opts.onTileClick(t);
-  }
-}
-function onWheel(e) { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 0.89); }
-
-function zoomAt(px, py, factor) {
-  const wx = (cam.x + px) / cam.z, wy = (cam.y + py) / cam.z;
-  cam.z = Math.max(0.4, Math.min(2.4, cam.z * factor));
-  cam.x = wx * cam.z - px; cam.y = wy * cam.z - py; clampCam();
+  if (Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) > 6) return; // war Drehen/Ziehen
+  const rect = renderer.domElement.getBoundingClientRect();
+  const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
+  const hit = ray.intersectObjects(tileMeshes, false)[0];
+  if (hit && opts.onTileClick) opts.onTileClick(hit.object.userData.index);
 }
 
-function tileAt(px, py) {
-  const wx = (cam.x + px) / cam.z, wy = (cam.y + py) / cam.z;
-  const cx = Math.floor(wx / TS), cy = Math.floor(wy / TS);
-  if (cx < 0 || cy < 0 || cx >= BASE_COLS || cy >= BASE_ROWS) return null;
-  return cy * BASE_COLS + cx;
+function onResize() {
+  if (!renderer || !host) return;
+  const w = host.clientWidth, hh = Math.max(340, Math.min(560, Math.round(window.innerHeight * 0.55)));
+  renderer.setSize(w, hh);
+  camera.aspect = w / hh; camera.updateProjectionMatrix();
 }
-
-// ----------------------------------------------------------------- Zeichnen
-const TCOL = {
-  grass:    ['#2c6b39', '#1c4726'],
-  forest:   ['#22512c', '#15331c'],
-  mountain: ['#6b6f78', '#41454d'],
-  water:    ['#1f6f9c', '#114b6e'],
-  sand:     ['#c4ab63', '#8c7a42'],
-};
 
 function loop() {
   raf = requestAnimationFrame(loop);
-  if (!ctx || !game) return;
-  draw(performance.now());
-}
-
-function draw(now) {
-  const W = canvas.width, H = canvas.height;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, W, H);
-  // Hintergrund (Wasser/Leere)
-  ctx.fillStyle = '#0a1622';
-  ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-
-  const z = cam.z;
-  const s = game.state;
-  const movingId = move != null ? s.layout[move] : null;
-
-  for (let i = 0; i < BASE_COLS * BASE_ROWS; i++) {
-    const cx = i % BASE_COLS, cy = Math.floor(i / BASE_COLS);
-    const x = cx * TS * z - cam.x, y = cy * TS * z - cam.y;
-    const ts = TS * z;
-    if (x > canvas.clientWidth || y > canvas.clientHeight || x + ts < 0 || y + ts < 0) continue;
-    const terr = (s.terrain && s.terrain[i]) || 'grass';
-    drawTile(x, y, ts, terr, now, cx, cy);
-
-    // Platzierungs-/Versetzen-Hervorhebung
-    const okTarget = move != null && movingId && game.canPlaceOn && game.canPlaceOn(movingId, i) && !s.layout[i];
-    if (okTarget) {
-      const a = 0.18 + 0.12 * Math.sin(now / 300);
-      ctx.fillStyle = `rgba(120,220,140,${a})`;
-      ctx.fillRect(x, y, ts, ts);
-    }
-    if (hover === i && !s.layout[i] && move == null) {
-      ctx.fillStyle = 'rgba(120,200,255,.12)';
-      ctx.fillRect(x, y, ts, ts);
-    }
-
-    const id = s.layout[i];
-    if (id) drawBuilding(x, y, ts, id, game.isQueued && game.isQueued(id), s.buildings[id] || 0, now);
-
-    if (sel != null && +sel === i) drawSelect(x, y, ts, '#ffd24a');
-    else if (move != null && +move === i) drawSelect(x, y, ts, '#7fe3ff');
-  }
-}
-
-function drawTile(x, y, ts, terr, now, cx, cy) {
-  const c = TCOL[terr] || TCOL.grass;
-  const g = ctx.createLinearGradient(x, y, x, y + ts);
-  g.addColorStop(0, c[0]); g.addColorStop(1, c[1]);
-  ctx.fillStyle = g;
-  ctx.fillRect(x, y, ts, ts);
-  // dezenter Raster-Rand
-  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, y + 0.5, ts - 1, ts - 1);
-
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x, y, ts, ts); ctx.clip();
-  const r = mulberry(cx * 73856093 ^ cy * 19349663);
-  if (terr === 'forest') {
-    for (let k = 0; k < 4; k++) {
-      const tx = x + ts * (0.2 + 0.6 * r()), ty = y + ts * (0.25 + 0.6 * r()), s = ts * 0.18;
-      ctx.fillStyle = '#5a3a1e'; ctx.fillRect(tx - s * 0.1, ty, s * 0.2, s * 0.8);
-      ctx.fillStyle = '#2f7a39'; ctx.beginPath(); ctx.moveTo(tx, ty - s); ctx.lineTo(tx + s, ty + s * 0.4); ctx.lineTo(tx - s, ty + s * 0.4); ctx.closePath(); ctx.fill();
-    }
-  } else if (terr === 'mountain') {
-    for (let k = 0; k < 3; k++) {
-      const tx = x + ts * (0.2 + 0.6 * r()), ty = y + ts * (0.55 + 0.3 * r()), s = ts * 0.28;
-      ctx.fillStyle = '#535862'; ctx.beginPath(); ctx.moveTo(tx, ty - s); ctx.lineTo(tx + s, ty + s * 0.5); ctx.lineTo(tx - s, ty + s * 0.5); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#d7dde6'; ctx.beginPath(); ctx.moveTo(tx, ty - s); ctx.lineTo(tx + s * 0.32, ty - s * 0.36); ctx.lineTo(tx - s * 0.32, ty - s * 0.36); ctx.closePath(); ctx.fill();
-    }
-  } else if (terr === 'water') {
-    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = Math.max(1, ts * 0.03);
-    for (let k = 0; k < 3; k++) {
-      const yy = y + ts * (0.3 + k * 0.22);
-      ctx.beginPath();
-      for (let xx = 0; xx <= ts; xx += ts / 8) ctx.lineTo(x + xx, yy + Math.sin((xx / ts) * 6 + now / 600 + k) * ts * 0.03);
-      ctx.stroke();
-    }
-  } else if (terr === 'sand') {
-    ctx.fillStyle = 'rgba(255,255,255,.10)';
-    for (let k = 0; k < 6; k++) ctx.fillRect(x + ts * r(), y + ts * r(), 2, 2);
-  } else {
-    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
-    for (let k = 0; k < 5; k++) { const tx = x + ts * r(), ty = y + ts * (0.3 + 0.6 * r()); ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - ts * 0.12); ctx.stroke(); }
-  }
-  ctx.restore();
-}
-
-function drawBuilding(x, y, ts, id, busy, lvl, now) {
-  // Schatten
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(x + ts / 2, y + ts * 0.82, ts * 0.34, ts * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-  const im = sprite(id);
-  const pad = ts * 0.12, size = ts - pad * 2;
-  if (im.complete && im.naturalWidth) {
-    ctx.drawImage(im, x + pad, y + pad * 0.6, size, size);
-  } else {
-    ctx.fillStyle = 'rgba(20,30,45,.8)'; ctx.fillRect(x + pad, y + pad, size, size);
-  }
-  if (busy) {
-    ctx.fillStyle = `rgba(255,210,74,${0.35 + 0.25 * Math.sin(now / 250)})`;
-    ctx.fillRect(x + pad, y + pad, size, size);
-    ctx.fillStyle = '#1a1300'; ctx.font = `bold ${Math.round(ts * 0.18)}px system-ui`; ctx.textAlign = 'center';
-    ctx.fillText('🏗️', x + ts / 2, y + ts * 0.55);
-  }
-  // Level-Badge
-  if (lvl > 0) {
-    const bw = ts * 0.3, bh = ts * 0.18;
-    ctx.fillStyle = 'rgba(6,8,12,.85)'; ctx.fillRect(x + ts - bw - 3, y + 3, bw, bh);
-    ctx.strokeStyle = '#2b8cff'; ctx.lineWidth = 1; ctx.strokeRect(x + ts - bw - 3, y + 3, bw, bh);
-    ctx.fillStyle = '#9fc8ff'; ctx.font = `bold ${Math.round(bh * 0.7)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('L' + lvl, x + ts - bw / 2 - 3, y + 3 + bh / 2);
-    ctx.textBaseline = 'alphabetic';
-  }
-}
-
-function drawSelect(x, y, ts, color) {
-  ctx.strokeStyle = color; ctx.lineWidth = 3;
-  ctx.strokeRect(x + 2, y + 2, ts - 4, ts - 4);
-  ctx.shadowColor = color; ctx.shadowBlur = 12;
-  ctx.strokeRect(x + 2, y + 2, ts - 4, ts - 4);
-  ctx.shadowBlur = 0;
-}
-
-function mulberry(seed) {
-  let a = seed >>> 0;
-  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  if (!renderer || !ready) return;
+  if (highlight && highlight.visible) highlight.material.opacity = 0.55 + 0.35 * Math.sin(Date.now() / 250);
+  controls.update();
+  renderer.render(scene, camera);
 }

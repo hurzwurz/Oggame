@@ -6,20 +6,36 @@ import { BASE_COLS, BASE_ROWS } from '../engine/game.js';
 import { makeBuilding } from './buildings3d.js';
 
 const THREE_URL = 'https://esm.sh/three@0.161.0';
-const ORBIT_URL = 'https://esm.sh/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+const JSM = 'https://esm.sh/three@0.161.0/examples/jsm/';
 
 let THREE = null, OrbitControls = null;
+let post = null, RoomEnvironment = null; // optionale Effekte (Bloom/Umgebung)
 async function loadThree() {
   if (THREE) return true;
   try {
     THREE = await import(/* @vite-ignore */ THREE_URL);
-    const oc = await import(/* @vite-ignore */ ORBIT_URL);
+    const oc = await import(/* @vite-ignore */ JSM + 'controls/OrbitControls.js');
     OrbitControls = oc.OrbitControls;
-    return true;
   } catch (e) {
     console.warn('Three.js konnte nicht geladen werden:', e && e.message);
     return false;
   }
+  // Effekte sind optional – fehlen sie, läuft die Karte ohne Bloom weiter.
+  try {
+    const [ec, rp, bp, op, re] = await Promise.all([
+      import(/* @vite-ignore */ JSM + 'postprocessing/EffectComposer.js'),
+      import(/* @vite-ignore */ JSM + 'postprocessing/RenderPass.js'),
+      import(/* @vite-ignore */ JSM + 'postprocessing/UnrealBloomPass.js'),
+      import(/* @vite-ignore */ JSM + 'postprocessing/OutputPass.js'),
+      import(/* @vite-ignore */ JSM + 'environments/RoomEnvironment.js'),
+    ]);
+    post = { EffectComposer: ec.EffectComposer, RenderPass: rp.RenderPass, UnrealBloomPass: bp.UnrealBloomPass, OutputPass: op.OutputPass };
+    RoomEnvironment = re.RoomEnvironment;
+  } catch (e) {
+    console.warn('Grafik-Effekte (Bloom) nicht geladen:', e && e.message);
+    post = null; RoomEnvironment = null;
+  }
+  return true;
 }
 
 // Geländehöhen & Farben
@@ -32,7 +48,7 @@ const TERR = {
 };
 
 let host = null, opts = {}, game = null;
-let renderer, scene, camera, controls, raf = 0;
+let renderer, scene, camera, controls, raf = 0, composer = null;
 let tileMeshes = [], buildingGroup = null, highlight = null, targetGroup = null;
 let sel = null, move = null, ready = false, layoutSig = '';
 const COLS = BASE_COLS, ROWS = BASE_ROWS;
@@ -63,6 +79,7 @@ export function unmount() {
   if (raf) cancelAnimationFrame(raf), raf = 0;
   window.removeEventListener('resize', onResize);
   if (controls) { controls.dispose(); controls = null; }
+  if (composer) { try { composer.dispose(); } catch (e) { /* egal */ } composer = null; }
   if (renderer) {
     renderer.domElement.removeEventListener('pointerdown', onDown);
     renderer.domElement.removeEventListener('pointerup', onUp);
@@ -99,8 +116,16 @@ function build() {
   el.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1a2a);
+  scene.background = skyTexture();
   scene.fog = new THREE.Fog(0x0b1a2a, COLS * 1.8, COLS * 4.5);
+
+  // Umgebungs-Reflexionen für Metall/Glas (PBR sieht damit viel edler aus)
+  if (RoomEnvironment) {
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    } catch (e) { /* ohne Umgebung weiter */ }
+  }
 
   camera = new THREE.PerspectiveCamera(50, w / hh, 0.1, 200);
   resetCamera();
@@ -136,6 +161,18 @@ function build() {
   rebuildBuildings();
   updateHighlight();
 
+  // Post-Processing: Bloom (Glühen) für leuchtende Akzente
+  composer = null;
+  if (post) {
+    try {
+      composer = new post.EffectComposer(renderer);
+      composer.addPass(new post.RenderPass(scene, camera));
+      const bloom = new post.UnrealBloomPass(new THREE.Vector2(w, hh), 0.7, 0.6, 0.82);
+      composer.addPass(bloom);
+      composer.addPass(new post.OutputPass());
+    } catch (e) { composer = null; }
+  }
+
   renderer.domElement.addEventListener('pointerdown', onDown);
   renderer.domElement.addEventListener('pointerup', onUp);
   window.addEventListener('resize', onResize);
@@ -145,6 +182,21 @@ function build() {
   host.querySelectorAll('.mz').forEach((b) => b.addEventListener('click', () => { if (b.dataset.z === 'reset') resetCamera(); }));
 
   loop();
+}
+
+function skyTexture() {
+  if (typeof document === 'undefined') return new THREE.Color(0x0b1a2a);
+  const c = document.createElement('canvas'); c.width = 16; c.height = 256;
+  const x = c.getContext('2d');
+  const grd = x.createLinearGradient(0, 0, 0, 256);
+  grd.addColorStop(0, '#1b3a5c'); grd.addColorStop(0.45, '#102a44'); grd.addColorStop(1, '#070f1a');
+  x.fillStyle = grd; x.fillRect(0, 0, 16, 256);
+  // ein paar Sterne oben
+  x.fillStyle = 'rgba(255,255,255,.7)';
+  for (let i = 0; i < 30; i++) x.fillRect(Math.random() * 16, Math.random() * 90, 1, 1);
+  const t = new THREE.CanvasTexture(c);
+  if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function resetCamera() {
@@ -290,6 +342,7 @@ function onResize() {
   if (!renderer || !host) return;
   const w = host.clientWidth, hh = Math.max(340, Math.min(560, Math.round(window.innerHeight * 0.55)));
   renderer.setSize(w, hh);
+  if (composer) composer.setSize(w, hh);
   camera.aspect = w / hh; camera.updateProjectionMatrix();
 }
 
@@ -298,5 +351,5 @@ function loop() {
   if (!renderer || !ready) return;
   if (highlight && highlight.visible) highlight.material.opacity = 0.55 + 0.35 * Math.sin(Date.now() / 250);
   controls.update();
-  renderer.render(scene, camera);
+  if (composer) composer.render(); else renderer.render(scene, camera);
 }

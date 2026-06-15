@@ -55,10 +55,22 @@ function box(THREE, g, w, h, d, color, x = 0, y = 0, z = 0, ry = 0, o) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(THREE, color, o));
   m.position.set(x, y + h / 2, z); m.rotation.y = ry; g.add(finish(m)); return m;
 }
-// Gebäudekörper mit Fenstertextur
+// Gebäudekörper mit Fenstertextur, leuchtenden Fenstern, Neon-Sockel & Tür
 function body(THREE, g, w, h, d, color, x = 0, y = 0, z = 0, ry = 0) {
-  return box(THREE, g, w, h, d, color, x, y, z, ry, { tex: windowsTex(THREE, color), rough: 0.7 });
+  const wt = windowsTex(THREE, color);
+  const m = box(THREE, g, w, h, d, color, x, y, z, ry, { tex: wt, rough: 0.6, metal: 0.18 });
+  if (wt) { m.material.emissiveMap = wt; m.material.emissive = new THREE.Color(0x2b5f8c); m.material.emissiveIntensity = 0.5; }
+  // leuchtende Sockel-Leiste
+  box(THREE, g, w * 1.03, 0.035, d * 1.03, 0x0e1a26, x, y, z, ry, { emissive: 0x29c5ff, emi: 0.8, flat: false });
+  // Tür
+  box(THREE, g, Math.min(0.16, w * 0.32), Math.min(0.2, h * 0.7), 0.03, 0x0c151e, x, y, z + d / 2, ry, { emissive: 0x66ccff, emi: 0.5 });
+  return m;
 }
+function beacon(THREE, g, x, y, z, color = 0xff4d4d) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 10), mat(THREE, color, { emissive: color, emi: 1.4, rough: 0.2, flat: false }));
+  m.position.set(x, y, z); g.add(finish(m)); return m;
+}
+function vent(THREE, g, x, y, z, color = 0x3a424c) { box(THREE, g, 0.12, 0.06, 0.12, color, x, y, z); }
 function cyl(THREE, g, r1, r2, h, color, x = 0, y = 0, z = 0, seg = 14, o) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), mat(THREE, color, o));
   m.position.set(x, y + h / 2, z); g.add(finish(m)); return m;
@@ -124,18 +136,22 @@ const BUILDERS = {
   shipyard(THREE, g) {
     pad(THREE, g); body(THREE, g, 0.78, 0.32, 0.5, C.factory, 0, 0.06, -0.06);
     box(THREE, g, 0.8, 0.16, 0.5, C.roofDark, 0, 0.38, -0.06, 0, { tex: panelTex(THREE, C.roofDark) });
-    box(THREE, g, 0.07, 0.5, 0.07, C.steel, 0.3, 0.06, 0.28, 0, { metal: 0.5 });
-    box(THREE, g, 0.3, 0.05, 0.05, C.steel, 0.18, 0.5, 0.28, 0, { metal: 0.5 });
+    box(THREE, g, 0.07, 0.5, 0.07, C.steel, 0.3, 0.06, 0.28, 0, { metal: 0.6, tex: panelTex(THREE, C.steel) });
+    box(THREE, g, 0.3, 0.05, 0.05, C.steel, 0.18, 0.5, 0.28, 0, { metal: 0.6 });
+    beacon(THREE, g, 0.3, 0.6, 0.28); beacon(THREE, g, -0.32, 0.5, -0.22, 0x36e0ff);
   },
   roboticsFactory(THREE, g) {
     pad(THREE, g); body(THREE, g, 0.72, 0.3, 0.6, C.factory, 0, 0.06);
-    cyl(THREE, g, 0.06, 0.06, 0.3, C.wall2, -0.2, 0.36, -0.16, 10);
-    cyl(THREE, g, 0.06, 0.06, 0.22, C.wall2, 0, 0.36, -0.16, 10);
+    cyl(THREE, g, 0.06, 0.06, 0.3, C.wall2, -0.2, 0.36, -0.16, 10, { tex: panelTex(THREE, C.wall2) });
+    cyl(THREE, g, 0.06, 0.06, 0.22, C.wall2, 0, 0.36, -0.16, 10, { tex: panelTex(THREE, C.wall2) });
     box(THREE, g, 0.5, 0.04, 0.5, C.roofDark, 0, 0.36);
+    vent(THREE, g, 0.18, 0.36, 0.14); vent(THREE, g, -0.04, 0.36, 0.16);
+    beacon(THREE, g, 0.22, 0.42, -0.18);
   },
   naniteFactory(THREE, g) {
     pad(THREE, g); body(THREE, g, 0.7, 0.4, 0.6, 0x434b57, 0, 0.06);
-    gem(THREE, g, 0.12, C.glass, 0, 0.5, 0); cyl(THREE, g, 0.05, 0.05, 0.28, C.steel, 0.26, 0.46, 0.2, 10, { metal: 0.6 });
+    gem(THREE, g, 0.12, C.glass, 0, 0.5, 0); cyl(THREE, g, 0.05, 0.05, 0.28, C.steel, 0.26, 0.46, 0.2, 10, { metal: 0.6, tex: panelTex(THREE, C.steel) });
+    beacon(THREE, g, -0.26, 0.46, 0.2, 0x66ffcc); beacon(THREE, g, 0.26, 0.46, -0.2);
   },
   metalStorage(THREE, g) { silo(THREE, g, C.steel); },
   crystalStorage(THREE, g) { silo(THREE, g, C.crystal); },

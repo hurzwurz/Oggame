@@ -33,23 +33,23 @@ const sim = {
 };
 
 const TABS = {
+  map: { label: '🗺️ Karte', render: (g) => V.renderBaseMap(g, mapSel, mapMove) },
   overview: { label: 'Übersicht', render: (g) => V.renderOverview(g) },
   base: { label: 'Basis', render: (g) => V.renderBase(g) },
-  map: { label: '🗺️ Karte', render: (g) => V.renderBaseMap(g, mapSel, mapMove) },
   buildings: { label: 'Gebäude', render: (g) => V.renderBuildings(g) },
   research: { label: 'Forschung', render: (g) => V.renderResearch(g) },
+  officers: { label: '👥 Mitarbeiter', render: (g) => V.renderOfficers(g) },
+  quests: { label: '🎯 Quests', render: (g) => V.renderQuests(g) },
+  daily: { label: '📅 Battle Pass', render: () => V.renderDaily(dailyData, game) },
+  ranking: { label: '🏆 Rangliste', render: () => V.renderRanking(rankingData) },
+  alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
+  friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   shipyard: { label: 'Werft', render: (g) => V.renderShipyard(g) },
   defense: { label: 'Verteidigung', render: (g) => V.renderDefense(g) },
   fleet: { label: 'Hangar', render: (g) => V.renderFleet(g) },
   galaxy: { label: 'Galaxie', render: (g) => V.renderGalaxy(g, dispatch, players) },
   movement: { label: 'Flotten', render: (g) => V.renderMovements(g) },
   reports: { label: 'Berichte', render: (g) => V.renderReports(g) },
-  ranking: { label: '🏆 Rangliste', render: () => V.renderRanking(rankingData) },
-  daily: { label: '📅 Battle Pass', render: () => V.renderDaily(dailyData, game) },
-  officers: { label: '👥 Mitarbeiter', render: (g) => V.renderOfficers(g) },
-  quests: { label: '🎯 Quests', render: (g) => V.renderQuests(g) },
-  alliance: { label: 'Allianz', render: () => V.renderAlliance(allianceData) },
-  friends: { label: 'Freunde', render: () => V.renderFriends(friendData) },
   simulator: { label: 'Simulator', render: () => V.renderSimulator(sim) },
   profile: { label: 'Profil', render: () => V.renderProfile(profileState()) },
   admin: { label: '🛡️ Admin', render: () => V.renderAdmin(adminData) },
@@ -67,8 +67,10 @@ function profileState() {
     isAdmin,
   };
 }
-const LIVE_TABS = new Set(['overview', 'base', 'movement', 'reports', 'buildings', 'research', 'daily']);
-let activeTab = 'overview';
+const LIVE_TABS = new Set(['overview', 'base', 'map', 'movement', 'reports', 'buildings', 'research', 'daily']);
+// Reines Aufbauspiel: die reinen Weltraum-/Kampf-Tabs ausblenden.
+const HIDDEN_TABS = new Set(['shipyard', 'defense', 'fleet', 'galaxy', 'movement', 'reports', 'simulator']);
+let activeTab = 'map';
 
 const app = document.getElementById('app');
 let topbarEl, tabsEl, viewEl;
@@ -792,7 +794,7 @@ function startGameUI() {
 
 function renderTabs() {
   tabsEl.innerHTML = Object.entries(TABS)
-    .filter(([key]) => key !== 'admin' || isAdmin)
+    .filter(([key]) => (key !== 'admin' || isAdmin) && !HIDDEN_TABS.has(key))
     .map(([key, t]) => `<button class="tab ${key === activeTab ? 'active' : ''}" data-tab="${key}">${t.label}</button>`)
     .join('');
 }

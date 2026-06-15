@@ -6,11 +6,12 @@ import { SHIP_MAP } from '../data/ships.js';
 import { DEFENSE_MAP } from '../data/defenses.js';
 import { OFFICER_MAP } from '../data/officers.js';
 import { QUESTS } from '../data/quests.js';
+import { generateTerrain, terrainAllowed } from '../data/terrain.js';
 import * as F from './formulas.js';
 
 export const MAX_LEVEL = 150; // Maximale Spielerstufe
-export const BASE_COLS = 5; // Spalten der Basis-Karte
-export const BASE_ROWS = 6; // Reihen der Basis-Karte
+export const BASE_COLS = 8; // Spalten der Gelände-Karte
+export const BASE_ROWS = 8; // Reihen der Gelände-Karte
 export const BASE_PLOTS = BASE_COLS * BASE_ROWS; // Anzahl Bauplätze
 const PLAYTIME_STEP = 7200; // 2 Stunden je Spielzeit-Belohnung
 import { loadGame, saveGame } from './storage.js';
@@ -52,6 +53,7 @@ function defaultState() {
     reports: [], // Kampf-/Spionage-/Expeditionsberichte (neueste zuerst)
     debris: {}, // Trümmerfelder je Koordinate "g:s:p" -> {metal, crystal}
     fleetSeq: 1,
+    terrain: [], // Geländetyp je Bauplatz (wird beim Start erzeugt)
   };
 }
 
@@ -64,19 +66,37 @@ export class Game {
     this.freeQueue = false; // globaler Admin-Schalter: Bau-Warteschleife aus (sofort, unbegrenzt)
     const source = options.initialState || loadGame();
     this.state = source ? this._migrate(source) : defaultState();
-    this._ensureLayout(); // bestehende Gebäude auf die Basis-Karte setzen
+    this._ensureTerrain(); // Gelände erzeugen
+    this._ensureLayout(); // bestehende Gebäude auf passende Bauplätze setzen
     // Offline-Fortschritt nachholen
     this.tick();
   }
 
   // ------------------------------------------------------------- Basis-Karte
-  // Setzt vorhandene Gebäude auf freie Bauplätze (für bestehende Spielstände).
+  // Erzeugt das Gelände (deterministisch je Planet), falls noch keins existiert.
+  _ensureTerrain() {
+    if (Array.isArray(this.state.terrain) && this.state.terrain.length === BASE_PLOTS) return;
+    const c = this.state.coords || [1, 1, 1];
+    const seed = (c[0] * 100000 + c[1] * 1000 + c[2] * 7 + 13) >>> 0;
+    this.state.terrain = generateTerrain(BASE_COLS, BASE_ROWS, seed);
+  }
+  terrainAt(plot) { return (this.state.terrain && this.state.terrain[plot]) || 'grass'; }
+  /** Darf das Gebäude `id` auf Feld `plot` stehen (Gelände passend)? */
+  canPlaceOn(id, plot) { return terrainAllowed(id, this.terrainAt(plot)); }
+
+  // Setzt vorhandene Gebäude auf freie, passende Bauplätze (für Altstände).
   _ensureLayout() {
     if (!this.state.layout) this.state.layout = {};
     if (Object.keys(this.state.layout).length) return;
-    let i = 0;
+    const used = new Set();
     for (const id of Object.keys(this.state.buildings)) {
-      if ((this.state.buildings[id] || 0) > 0 && i < BASE_PLOTS) this.state.layout[i++] = id;
+      if ((this.state.buildings[id] || 0) <= 0) continue;
+      let plot = -1;
+      for (let i = 0; i < BASE_PLOTS; i++) {
+        if (!used.has(i) && terrainAllowed(id, this.terrainAt(i))) { plot = i; break; }
+      }
+      if (plot < 0) for (let i = 0; i < BASE_PLOTS; i++) if (!used.has(i)) { plot = i; break; }
+      if (plot >= 0) { this.state.layout[plot] = id; used.add(plot); }
     }
   }
   /** Liefert den Bauplatz-Index eines Gebäudes oder null. */
@@ -94,17 +114,19 @@ export class Game {
   placeBuilding(plot, id) {
     plot = String(plot);
     if (this.state.layout[plot]) return { ok: false, error: 'Feld ist belegt' };
+    if (!this.canPlaceOn(id, plot)) return { ok: false, error: 'Falsches Gelände für dieses Gebäude' };
     if (this.plotOf(id) != null) return { ok: false, error: 'Dieses Gebäude existiert bereits' };
     const res = this.buildBuilding(id);
     if (res.ok) { this.state.layout[plot] = id; this.save(); }
     return res;
   }
-  /** Versetzt ein Gebäude auf ein freies Feld (reine Anordnung, keine Kosten). */
+  /** Versetzt ein Gebäude auf ein freies, passendes Feld (keine Kosten). */
   movePlot(from, to) {
     from = String(from); to = String(to);
     const id = this.state.layout[from];
     if (!id) return { ok: false, error: 'Kein Gebäude auf dem Feld' };
     if (this.state.layout[to]) return { ok: false, error: 'Zielfeld ist belegt' };
+    if (!this.canPlaceOn(id, to)) return { ok: false, error: 'Falsches Gelände für dieses Gebäude' };
     delete this.state.layout[from];
     this.state.layout[to] = id;
     this.save();
@@ -159,6 +181,7 @@ export class Game {
       stats: { combatWins: 0, expeditions: 0, fleetsSent: 0, debrisCollected: 0, ...(saved.stats || {}) },
       questsClaimed: saved.questsClaimed || {},
       layout: saved.layout || {},
+      terrain: (Array.isArray(saved.terrain) && saved.terrain.length === BASE_PLOTS) ? saved.terrain : [],
     };
   }
 

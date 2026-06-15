@@ -6,6 +6,7 @@ import { SHIPS, SHIP_MAP, SHIP_CLASSES } from '../data/ships.js';
 import { DEFENSES, DEFENSE_MAP } from '../data/defenses.js';
 import { OFFICERS, officerCost } from '../data/officers.js';
 import { BASE_COLS, BASE_PLOTS } from '../engine/game.js';
+import { TERRAINS } from '../data/terrain.js';
 import * as F from '../engine/formulas.js';
 import * as G from '../data/galaxy.js';
 import { getIcon } from '../data/icons.js';
@@ -1113,21 +1114,27 @@ export function renderQuests(game) {
 export function renderBaseMap(game, sel, move) {
   const s = game.state;
   const moving = move != null && s.layout[move];
+  const movingId = moving ? s.layout[move] : null;
   let cells = '';
   for (let i = 0; i < BASE_PLOTS; i++) {
     const id = s.layout[i];
+    const terr = game.terrainAt(i);
+    const tCls = ` t-${terr}`;
     const selCls = (sel != null && +sel === i) ? ' sel' : '';
     if (id) {
       const lvl = s.buildings[id] || 0;
       const busy = game.isQueued(id);
       const badge = busy && lvl === 0 ? '🏗️' : `L${lvl}`;
       const moveCls = (moving && +move === i) ? ' moving' : '';
-      cells += `<button class="plot built${selCls}${moveCls}${busy ? ' building-now' : ''}" data-plot="${i}" data-built="1">
+      cells += `<button class="plot built${tCls}${selCls}${moveCls}${busy ? ' building-now' : ''}" data-plot="${i}" data-built="1">
         ${thumbHtml('buildings', id, getIcon(id, 'building'))}
         <span class="plot-badge">${badge}</span>
       </button>`;
     } else {
-      cells += `<button class="plot empty${selCls}${moving ? ' target' : ''}" data-plot="${i}">${moving ? '↧' : '＋'}</button>`;
+      // Im Versetzen-Modus nur passende Zielfelder hervorheben
+      const okTarget = moving && game.canPlaceOn(movingId, i);
+      const tEmoji = TERRAINS[terr] ? TERRAINS[terr].emoji : '';
+      cells += `<button class="plot empty${tCls}${selCls}${okTarget ? ' target' : ''}" data-plot="${i}">${moving ? (okTarget ? '↧' : '') : `<span class="terr-emoji">${tEmoji}</span>`}</button>`;
     }
   }
   const grid = `<div class="base-map" style="grid-template-columns:repeat(${BASE_COLS},1fr)">${cells}</div>`;
@@ -1158,8 +1165,10 @@ export function renderBaseMap(game, sel, move) {
       <button class="ghost map-deselect" style="margin-top:8px;width:100%">Schließen</button>
     </div>`;
   } else if (sel != null) {
-    // Gebäude-Auswahl für ein leeres Feld
-    const placeable = BUILDINGS.filter((b) => game.plotOf(b.id) == null);
+    // Gebäude-Auswahl für ein leeres Feld – nur was auf dieses Gelände passt
+    const terr = game.terrainAt(sel);
+    const tInfo = TERRAINS[terr] || { name: terr, emoji: '' };
+    const placeable = BUILDINGS.filter((b) => game.plotOf(b.id) == null && game.canPlaceOn(b.id, sel));
     const items = placeable.map((b) => {
       const cost = F.levelCost(b, 0);
       const ok = F.requirementsMet(b, game.state) && F.canAfford(game.resources, cost);
@@ -1168,18 +1177,20 @@ export function renderBaseMap(game, sel, move) {
         <p class="desc">${b.desc}</p>
         <div class="cost">${costLine(cost)}</div>
         ${reqLine(b, game)}
-        <button class="build-btn place-pick" data-plot="${sel}" data-id="${b.id}" ${ok ? '' : 'disabled'}>📍 Hier platzieren</button>
+        <button class="build-btn place-pick" data-plot="${sel}" data-id="${b.id}" ${ok ? '' : 'disabled'}>📍 Hier bauen</button>
       </div>`;
     }).join('');
     ctx = `<div class="panel">
-      <div class="card-head"><h3>Gebäude wählen</h3><button class="ghost map-deselect">✕</button></div>
-      ${placeable.length ? `<div class="cards">${items}</div>` : `<p class="muted">Alle Gebäude sind bereits platziert.</p>`}
+      <div class="card-head"><h3>${tInfo.emoji} ${tInfo.name} – Gebäude wählen</h3><button class="ghost map-deselect">✕</button></div>
+      ${placeable.length ? `<div class="cards">${items}</div>` : `<p class="muted">Auf <b>${tInfo.name}</b> kann hier kein (weiteres) Gebäude gebaut werden. Andere Felder bieten anderes Gelände.</p>`}
     </div>`;
   }
 
+  const legend = Object.entries(TERRAINS).map(([, t]) => `<span class="terr-key">${t.emoji} ${t.name}</span>`).join('');
   return `<div class="panel">
       <h2>🗺️ Basis-Karte</h2>
-      <p class="muted small">Tippe ein freies Feld <b>＋</b>, um ein Gebäude zu setzen. Tippe ein Gebäude zum Ausbauen, Versetzen oder Abreißen.</p>
+      <p class="muted small">Tippe ein freies Feld, um dort zu bauen (nur auf passendem Gelände: Mine→Berg, Synthesizer→Wasser …). Gebäude antippen: ausbauen, versetzen, abreißen.</p>
+      <div class="terr-legend">${legend}</div>
       ${moveHint}
       ${grid}
     </div>${ctx}`;

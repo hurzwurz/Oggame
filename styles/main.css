@@ -556,9 +556,20 @@ button.build-btn.building-timer {
 }
 .plot.moving { border-color: #ffd24a; box-shadow: 0 0 0 2px #ffd24a inset; }
 .plot.empty.target { border-color: var(--neon); color: var(--neon); border-style: dashed; animation: pulseTarget 1.2s infinite; }
-@keyframes pulseTarget { 50% { background: rgba(43,140,255,.14); } }
+@keyframes pulseTarget { 50% { background: rgba(43,140,255,.28) !important; } }
 .map-actions { display: flex; gap: 6px; margin-top: 8px; }
 .map-actions .ghost { flex: 1; }
+
+/* ===== Gelände-Farben ===== */
+.plot.t-grass    { background: linear-gradient(180deg, #1d3a26, #14271b); }
+.plot.t-forest   { background: linear-gradient(180deg, #16331f, #0e2114); }
+.plot.t-mountain { background: linear-gradient(180deg, #3a3d45, #23262d); }
+.plot.t-water    { background: linear-gradient(180deg, #15405c, #0e2a3d); }
+.plot.t-sand     { background: linear-gradient(180deg, #3c3520, #2a2616); }
+.plot.built.t-grass, .plot.built.t-forest, .plot.built.t-mountain, .plot.built.t-water, .plot.built.t-sand { filter: none; }
+.plot .terr-emoji { opacity: .5; font-size: 20px; }
+.terr-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+.terr-key { font-size: 11px; color: var(--muted); }
 
 /* ===== Quest-Fortschrittsbalken ===== */
 .quest-bar { height: 8px; background: var(--bg2); border: 1px solid var(--border); margin: 8px 0; overflow: hidden; }

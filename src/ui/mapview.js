@@ -3,6 +3,7 @@
 // einen Hinweis statt eines leeren Bildschirms.
 
 import { BASE_COLS, BASE_ROWS } from '../engine/game.js';
+import { makeBuilding } from './buildings3d.js';
 
 const THREE_URL = 'https://esm.sh/three@0.161.0';
 const ORBIT_URL = 'https://esm.sh/three@0.161.0/examples/jsm/controls/OrbitControls.js';
@@ -33,7 +34,6 @@ const TERR = {
 let host = null, opts = {}, game = null;
 let renderer, scene, camera, controls, raf = 0;
 let tileMeshes = [], buildingGroup = null, highlight = null, targetGroup = null;
-let texLoader = null; const texCache = new Map();
 let sel = null, move = null, ready = false, layoutSig = '';
 const COLS = BASE_COLS, ROWS = BASE_ROWS;
 
@@ -115,8 +115,6 @@ function build() {
   scene.add(sun);
   scene.add(new THREE.HemisphereLight(0x9fc8ff, 0x202830, 0.5));
 
-  texLoader = new THREE.TextureLoader();
-
   buildTerrain();
   highlight = makeHighlight(0xffd24a);
   scene.add(highlight); highlight.visible = false;
@@ -192,18 +190,11 @@ function makeHighlight(color) {
   return new THREE.Mesh(geo, mat);
 }
 
-function texture(id) {
-  if (texCache.has(id)) return texCache.get(id);
-  const t = texLoader.load(`assets/buildings/${id}.png`);
-  t.colorSpace = THREE.SRGBColorSpace;
-  texCache.set(id, t);
-  return t;
-}
-
 function rebuildBuildings() {
   if (!buildingGroup) return;
   const s = game.state;
-  const sig = Object.entries(s.layout).map(([p, id]) => p + ':' + id).sort().join('|');
+  // Signatur inkl. Stufe -> Modell wird bei Ausbau neu erzeugt (wächst).
+  const sig = Object.entries(s.layout).map(([p, id]) => p + ':' + id + ':' + (s.buildings[id] || 0)).sort().join('|');
   if (sig === layoutSig) return; // nichts geändert
   layoutSig = sig;
   while (buildingGroup.children.length) buildingGroup.remove(buildingGroup.children[0]);
@@ -211,11 +202,9 @@ function rebuildBuildings() {
     const i = +p;
     const top = (tileMeshes[i] && tileMeshes[i].userData.top) || 0.7;
     const { x, z } = tileWorld(i);
-    const mat = new THREE.SpriteMaterial({ map: texture(id), transparent: true });
-    const spr = new THREE.Sprite(mat);
-    spr.scale.set(0.95, 0.95, 1);
-    spr.position.set(x, top + 0.5, z);
-    buildingGroup.add(spr);
+    const model = makeBuilding(THREE, id, s.buildings[id] || 0);
+    model.position.set(x, top, z);
+    buildingGroup.add(model);
   }
 }
 

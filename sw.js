@@ -2,7 +2,7 @@
 // WICHTIG: Holt eigene Dateien IMMER frisch vom Server (umgeht den HTTP-Cache),
 // damit neue Deploys sofort ankommen. Cache dient nur als Offline-Fallback.
 
-const CACHE = 'nexarion-v18';
+const CACHE = 'nexarion-v19';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -24,7 +24,7 @@ self.addEventListener('fetch', (event) => {
 
   // Bilder/Assets: CACHE-FIRST (einmal laden, dann blitzschnell aus dem Cache).
   // Verhindert, dass große PNGs bei jedem Neuzeichnen neu geladen werden.
-  if (/\.(png|jpg|jpeg|webp|gif|svg|ico)$/i.test(url.pathname)) {
+  if (/\.(png|jpg|jpeg|webp|gif|svg|ico|glb|gltf|bin)$/i.test(url.pathname)) {
     event.respondWith(
       caches.match(req).then((cached) =>
         cached || fetch(req).then((res) => {
